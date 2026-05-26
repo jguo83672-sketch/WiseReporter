@@ -5,6 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_required, current_user
 from models import db, OfficialAccount, Article, AIContent, EducationContent, WeeklyReport, CookiePool, CrawlLog, WechatContent, LeiduiContent
 from core.data_store import ArticleStore
+from core.decorators import write_required, super_admin_required, require_permission, PERMISSION_LABELS
 from datetime import datetime, timedelta
 import pytz
 import json
@@ -366,7 +367,7 @@ def report_detail(report_id):
     return render_template('reports/detail.html', report=report)
 
 @main_bp.route('/reports/<int:report_id>/edit', methods=['GET', 'POST'])
-@login_required
+@require_permission('write_reports')
 def edit_report(report_id):
     """编辑周报页面"""
     report = WeeklyReport.query.get_or_404(report_id)
@@ -396,7 +397,7 @@ def edit_report(report_id):
     return render_template('reports/edit.html', report=report)
 
 @main_bp.route('/reports/generate', methods=['GET', 'POST'])
-@login_required
+@require_permission('write_reports')
 def generate_report():
     """生成周报页面"""
     from core.report_generator import WeeklyReportGenerator
@@ -501,3 +502,9 @@ def logs():
 def settings():
     """设置页面"""
     return render_template('settings/index.html')
+
+@main_bp.route('/admin/permissions')
+@super_admin_required
+def permissions():
+    """权限管理页面（仅超级管理员）"""
+    return render_template('admin/permissions.html')

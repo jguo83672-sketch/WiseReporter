@@ -21,15 +21,45 @@ def init_database():
         db.create_all()
         print("[OK] Database tables created")
         
-        # 创建默认管理员账号
+        # 创建默认账号
+        # 超级管理员
         if not User.query.filter_by(username='admin').first():
             admin = User(
                 username='admin',
                 email='admin@wisereporter.com',
-                password_hash=generate_password_hash('admin123')
+                password_hash=generate_password_hash('admin123'),
+                role='super_admin'
             )
             db.session.add(admin)
-            print("[OK] Default admin created (admin/admin123)")
+            print("[OK] Super admin created (admin/admin123)")
+        else:
+            # 确保现有admin账号是超级管理员
+            existing_admin = User.query.filter_by(username='admin').first()
+            if existing_admin and existing_admin.role != 'super_admin':
+                existing_admin.role = 'super_admin'
+                print("[OK] Upgraded existing admin to super_admin")
+        
+        # 管理员1
+        if not User.query.filter_by(username='admin01').first():
+            admin01 = User(
+                username='admin01',
+                email='admin01@wisereporter.com',
+                password_hash=generate_password_hash('admin123'),
+                role='admin'
+            )
+            db.session.add(admin01)
+            print("[OK] Admin01 created (admin01/admin123)")
+        
+        # 管理员2
+        if not User.query.filter_by(username='admin02').first():
+            admin02 = User(
+                username='admin02',
+                email='admin02@wisereporter.com',
+                password_hash=generate_password_hash('admin123'),
+                role='admin'
+            )
+            db.session.add(admin02)
+            print("[OK] Admin02 created (admin02/admin123)")
         
         # 创建示例公众号
         sample_accounts = [
@@ -77,7 +107,12 @@ def init_database():
         
         db.session.commit()
         print("\n[OK] Database initialization complete!")
-        print("\nPlease visit http://localhost:5000/auth/register to create account.")
+        print("\n=== 账号信息 ===")
+        print("超级管理员: admin / admin123 (可管理所有权限)")
+        print("管理员1:    admin01 / admin123 (除权限管理外的全功能)")
+        print("管理员2:    admin02 / admin123 (除权限管理外的全功能)")
+        print("\n普通用户请由超级管理员在「权限管理」页面创建。")
+        print("访问地址: http://localhost:5000/auth/login")
 
 if __name__ == '__main__':
     init_database()

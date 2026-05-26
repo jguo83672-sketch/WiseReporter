@@ -8,6 +8,7 @@ from core.data_store import ArticleStore, CrawlManager, CrawlProgressManager
 from core.cookie_manager import CookieManager
 from core.report_generator import WeeklyReportGenerator
 from core.wechat_scraper import WechatArticleSpider
+from core.decorators import write_required, require_permission
 from datetime import datetime, timedelta
 import pytz
 import json
@@ -57,7 +58,7 @@ def get_ai_news():
     })
 
 @api_bp.route('/ai-news/crawl', methods=['POST'])
-@login_required
+@require_permission('write_ai_news')
 def crawl_ai_news():
     """爬取AI资讯"""
     source = None
@@ -79,7 +80,7 @@ def crawl_ai_news():
 # ==================== Cookie池API ====================
 
 @api_bp.route('/cookies/parse', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def parse_cookie():
     """解析Cookie字符串"""
     data = request.json
@@ -99,7 +100,7 @@ def parse_cookie():
         return jsonify({'code': 1, 'message': f'解析失败: {str(e)}'})
 
 @api_bp.route('/cookies/import', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def import_cookie():
     """导入Cookie"""
     data = request.json
@@ -153,7 +154,7 @@ def get_cookies():
     })
 
 @api_bp.route('/cookies', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def add_cookie():
     """添加Cookie"""
     data = request.json
@@ -189,7 +190,7 @@ def add_cookie():
         return jsonify({'code': 1, 'message': f'添加失败: {str(e)}'})
 
 @api_bp.route('/cookies/<int:cookie_id>', methods=['PUT'])
-@login_required
+@require_permission('manage_crawl')
 def update_cookie(cookie_id):
     """更新Cookie"""
     data = request.json
@@ -213,7 +214,7 @@ def update_cookie(cookie_id):
         return jsonify({'code': 1, 'message': f'更新失败: {str(e)}'})
 
 @api_bp.route('/cookies/<int:cookie_id>', methods=['DELETE'])
-@login_required
+@require_permission('manage_crawl')
 def delete_cookie(cookie_id):
     """删除Cookie"""
     CookieManager.delete_cookie(cookie_id)
@@ -241,7 +242,7 @@ def get_reports():
     })
 
 @api_bp.route('/reports/generate', methods=['POST'])
-@login_required
+@require_permission('write_reports')
 def generate_report():
     """生成周报"""
     data = request.json or {}
@@ -265,7 +266,7 @@ def generate_report():
     })
 
 @api_bp.route('/reports/<int:report_id>/publish', methods=['POST'])
-@login_required
+@require_permission('write_reports')
 def publish_report(report_id):
     """发布周报"""
     report = WeeklyReportGenerator.publish_report(report_id)
@@ -275,7 +276,7 @@ def publish_report(report_id):
     })
 
 @api_bp.route('/reports/<int:report_id>', methods=['PUT'])
-@login_required
+@require_permission('write_reports')
 def update_report(report_id):
     """更新周报"""
     report = WeeklyReport.query.get_or_404(report_id)
@@ -308,7 +309,7 @@ def update_report(report_id):
     })
 
 @api_bp.route('/reports/<int:report_id>', methods=['DELETE'])
-@login_required
+@require_permission('write_reports')
 def delete_report(report_id):
     """删除周报"""
     report = WeeklyReport.query.get_or_404(report_id)
@@ -417,7 +418,7 @@ def mark_education_read(news_id):
     })
 
 @api_bp.route('/education/news/<int:news_id>', methods=['DELETE'])
-@login_required
+@require_permission('write_education')
 def delete_education_news(news_id):
     """删除教育资讯"""
     success = ArticleStore.delete_education_content(news_id)
@@ -427,7 +428,7 @@ def delete_education_news(news_id):
     })
 
 @api_bp.route('/education/crawl', methods=['POST'])
-@login_required
+@require_permission('write_education')
 def crawl_education_news():
     """采集教育资讯"""
     try:
@@ -561,7 +562,7 @@ def toggle_leidui_favorite(news_id):
     })
 
 @api_bp.route('/leidui/news/<int:news_id>', methods=['DELETE'])
-@login_required
+@require_permission('write_leidui')
 def delete_leidui_news(news_id):
     """删除雷递网资讯"""
     success = ArticleStore.delete_leidui_content(news_id)
@@ -571,7 +572,7 @@ def delete_leidui_news(news_id):
     })
 
 @api_bp.route('/leidui/crawl', methods=['POST'])
-@login_required
+@require_permission('write_leidui')
 def crawl_leidui_news():
     """采集雷递网最新资讯（首页，最多10篇）"""
     try:
@@ -603,7 +604,7 @@ def get_crawl_progress():
     })
 
 @api_bp.route('/crawl/progress/reset', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def reset_crawl_progress():
     """重置爬取进度"""
     data = request.get_json() or {}
@@ -694,7 +695,7 @@ def get_wechat_accounts():
     })
 
 @api_bp.route('/wechat/accounts', methods=['POST'])
-@login_required
+@require_permission('write_articles')
 def add_wechat_account():
     """添加公众号"""
     data = request.json
@@ -731,7 +732,7 @@ def add_wechat_account():
     })
 
 @api_bp.route('/wechat/accounts/<int:account_id>', methods=['PUT'])
-@login_required
+@require_permission('write_articles')
 def update_wechat_account(account_id):
     """更新公众号"""
     account = OfficialAccount.query.get_or_404(account_id)
@@ -768,7 +769,7 @@ def update_wechat_account(account_id):
     })
 
 @api_bp.route('/wechat/accounts/<int:account_id>', methods=['DELETE'])
-@login_required
+@require_permission('write_articles')
 def delete_wechat_account(account_id):
     """删除公众号"""
     account = OfficialAccount.query.get_or_404(account_id)
@@ -826,7 +827,7 @@ def toggle_wechat_favorite(article_id):
     })
 
 @api_bp.route('/wechat/articles/<int:article_id>', methods=['DELETE'])
-@login_required
+@require_permission('write_articles')
 def delete_wechat_article(article_id):
     """删除公众号文章"""
     success = ArticleStore.delete_wechat_content(article_id)
@@ -836,7 +837,7 @@ def delete_wechat_article(article_id):
     })
 
 @api_bp.route('/wechat/crawl', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def crawl_wechat_article():
     """爬取单个公众号文章"""
     data = request.json
@@ -858,7 +859,7 @@ def crawl_wechat_article():
     })
 
 @api_bp.route('/wechat/test-spider', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def test_wechat_spider():
     """测试公众号爬虫"""
     from core.scraper import WechatScraper
@@ -893,7 +894,7 @@ def test_wechat_spider():
         })
 
 @api_bp.route('/crawl/batch', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def crawl_wechat_account():
     """批量采集公众号文章"""
     data = request.json
@@ -946,7 +947,7 @@ def get_wechat_credentials():
     })
 
 @api_bp.route('/wechat/credentials', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def add_wechat_credential():
     """添加微信凭证"""
     data = request.json
@@ -978,7 +979,7 @@ def add_wechat_credential():
     })
 
 @api_bp.route('/wechat/credentials/<int:credential_id>', methods=['PUT'])
-@login_required
+@require_permission('manage_crawl')
 def update_wechat_credential(credential_id):
     """更新微信凭证"""
     credential = WechatCredential.query.get_or_404(credential_id)
@@ -1009,7 +1010,7 @@ def update_wechat_credential(credential_id):
     })
 
 @api_bp.route('/wechat/credentials/<int:credential_id>', methods=['DELETE'])
-@login_required
+@require_permission('manage_crawl')
 def delete_wechat_credential(credential_id):
     """删除微信凭证"""
     credential = WechatCredential.query.get_or_404(credential_id)
@@ -1018,7 +1019,7 @@ def delete_wechat_credential(credential_id):
     return jsonify({'code': 0, 'message': '删除成功'})
 
 @api_bp.route('/wechat/credentials/<int:credential_id>/set-primary', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def set_primary_credential(credential_id):
     """设置为主凭证"""
     credential = WechatCredential.query.get_or_404(credential_id)
@@ -1039,7 +1040,7 @@ def set_primary_credential(credential_id):
 # ==================== 公众号Biz管理API ====================
 
 @api_bp.route('/wechat/accounts-by-biz', methods=['POST'])
-@login_required
+@require_permission('write_articles')
 def add_account_by_biz():
     """通过biz添加公众号"""
     data = request.json
@@ -1074,7 +1075,7 @@ def add_account_by_biz():
 # ==================== 批量采集API ====================
 
 @api_bp.route('/wechat/batch-crawl', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def batch_crawl_wechat():
     """
     批量采集公众号文章（使用profile_ext接口）
@@ -1214,7 +1215,7 @@ def batch_crawl_wechat():
     })
 
 @api_bp.route('/wechat/test-credential', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def test_wechat_credential():
     """测试微信凭证是否有效"""
     data = request.json
@@ -1263,7 +1264,7 @@ def test_wechat_credential():
 
 
 @api_bp.route('/wechat/crawl-links', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def crawl_wechat_links():
     """
     批量采集公众号文章链接
@@ -1436,7 +1437,7 @@ def get_coze_workflow_status():
 
 
 @api_bp.route('/coze/run-workflow', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def run_coze_workflow():
     """
     调用Coze工作流获取微信文章链接
@@ -1675,7 +1676,7 @@ def get_crawl_task(task_id):
 
 
 @api_bp.route('/settings/tasks/<int:task_id>', methods=['PUT'])
-@login_required
+@require_permission('manage_crawl')
 def update_crawl_task(task_id):
     """更新采集任务配置"""
     task = CrawlTaskConfig.query.get_or_404(task_id)
@@ -1711,7 +1712,7 @@ def update_crawl_task(task_id):
 
 
 @api_bp.route('/settings/tasks/<int:task_id>/run', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def run_crawl_task_now(task_id):
     """手动执行采集任务"""
     task = CrawlTaskConfig.query.get_or_404(task_id)
@@ -1758,7 +1759,7 @@ def run_crawl_task_now(task_id):
 
 
 @api_bp.route('/settings/save', methods=['POST'])
-@login_required
+@require_permission('manage_settings')
 def save_settings():
     """保存系统设置"""
     data = request.json
@@ -1781,7 +1782,7 @@ def save_settings():
 
 
 @api_bp.route('/settings/tasks', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def create_crawl_task():
     """创建新的采集任务"""
     data = request.json
@@ -1843,7 +1844,7 @@ def create_crawl_task():
 
 
 @api_bp.route('/settings/tasks/<int:task_id>', methods=['DELETE'])
-@login_required
+@require_permission('manage_crawl')
 def delete_crawl_task(task_id):
     """删除采集任务"""
     task = CrawlTaskConfig.query.get_or_404(task_id)
@@ -1903,7 +1904,7 @@ def get_task_types():
 
 
 @api_bp.route('/settings/tasks/init', methods=['POST'])
-@login_required
+@require_permission('manage_crawl')
 def init_default_tasks():
     """初始化默认采集任务"""
     # 检查是否已有任务配置

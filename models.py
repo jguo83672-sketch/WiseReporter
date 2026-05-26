@@ -19,13 +19,50 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
+    role = db.Column(db.String(20), default='user')  # super_admin / admin / user
+    permissions = db.Column(db.Text, default='[]')  # JSON数组，普通用户的额外权限
     created_at = db.Column(db.DateTime, default=now_beijing)
     
     def get_id(self):
         return str(self.id)
     
+    @property
+    def is_super_admin(self):
+        return self.role == 'super_admin'
+    
+    @property
+    def is_admin(self):
+        return self.role in ('super_admin', 'admin')
+    
+    @property
+    def can_write(self):
+        """是否有写入权限（管理员或有任意写入权限的普通用户）"""
+        if self.is_admin:
+            return True
+        perms = self.get_permissions_list()
+        return len(perms) > 0
+    
+    def get_permissions_list(self):
+        """解析权限JSON为列表"""
+        import json
+        try:
+            return json.loads(self.permissions or '[]')
+        except (json.JSONDecodeError, TypeError):
+            return []
+    
+    def set_permissions(self, perm_list):
+        """设置权限列表"""
+        import json
+        self.permissions = json.dumps(perm_list, ensure_ascii=False)
+    
+    def has_permission(self, perm_name):
+        """检查是否有指定权限（管理员始终拥有所有权限）"""
+        if self.is_admin:
+            return True
+        return perm_name in self.get_permissions_list()
+    
     def __repr__(self):
-        return f'<User {self.username}>'
+        return f'<User {self.username} ({self.role})>'
 
 class OfficialAccount(db.Model):
     """公众号表"""

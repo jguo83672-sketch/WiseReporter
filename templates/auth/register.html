@@ -5,28 +5,11 @@
 {% block content %}
 <div class="auth-container">
     <div class="auth-card">
-        <h1>注册 WiseReporter</h1>
-        <form method="post">
-            <div class="form-group">
-                <label>用户名</label>
-                <input type="text" name="username" required autofocus>
-            </div>
-            <div class="form-group">
-                <label>邮箱</label>
-                <input type="email" name="email" required>
-            </div>
-            <div class="form-group">
-                <label>密码</label>
-                <input type="password" name="password" required>
-            </div>
-            <div class="form-group">
-                <label>确认密码</label>
-                <input type="password" name="confirm_password" required>
-            </div>
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary btn-block">注册</button>
-            </div>
-        </form>
+        <h1>账号注册</h1>
+        <p style="text-align:center;color:#666;margin-bottom:20px;">
+            系统已关闭自主注册。<br>
+            如需创建账号，请联系超级管理员（admin）。
+        </p>
         <p class="auth-link">
             已有账号？ <a href="{{ url_for('auth.login') }}">立即登录</a>
         </p>

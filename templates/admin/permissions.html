@@ -1,0 +1,461 @@
+{% extends "base.html" %}
+{% block title %}权限管理 - WiseReporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>权限管理</h1>
+    <button class="btn btn-primary" onclick="showCreateModal()">+ 创建用户</button>
+</div>
+
+<div class="table-container">
+    <table class="data-table" id="users-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>用户名</th>
+                <th>邮箱</th>
+                <th>角色</th>
+                <th>权限</th>
+                <th>状态</th>
+                <th>创建时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="8" class="text-center">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 创建用户弹窗 -->
+<div id="create-modal" class="modal">
+    <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <h3>创建用户</h3>
+            <span class="modal-close" onclick="closeModal('create-modal')">&times;</span>
+        </div>
+        <form id="create-form">
+            <div class="form-group">
+                <label>用户名 *</label>
+                <input type="text" name="username" required>
+            </div>
+            <div class="form-group">
+                <label>邮箱 *</label>
+                <input type="email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label>密码 *</label>
+                <input type="password" name="password" required>
+            </div>
+            <div class="form-group">
+                <label>角色</label>
+                <select name="role" id="create-role">
+                    <option value="user">普通用户</option>
+                    <option value="admin">管理员</option>
+                    <option value="super_admin">超级管理员</option>
+                </select>
+            </div>
+            <div id="create-permissions-section" class="form-group">
+                <label>操作权限</label>
+                <div id="create-permissions-list" class="permissions-checkbox-list"></div>
+                <div class="form-help">注：管理员角色自动拥有全部权限，无需额外配置</div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('create-modal')">取消</button>
+                <button type="submit" class="btn btn-primary">创建</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 编辑用户弹窗 -->
+<div id="edit-modal" class="modal">
+    <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <h3>编辑用户</h3>
+            <span class="modal-close" onclick="closeModal('edit-modal')">&times;</span>
+        </div>
+        <form id="edit-form">
+            <input type="hidden" name="user_id" id="edit-user-id">
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="edit-username" disabled>
+            </div>
+            <div class="form-group">
+                <label>邮箱</label>
+                <input type="email" name="email" id="edit-email" required>
+            </div>
+            <div class="form-group">
+                <label>角色</label>
+                <select name="role" id="edit-role">
+                    <option value="user">普通用户</option>
+                    <option value="admin">管理员</option>
+                    <option value="super_admin">超级管理员</option>
+                </select>
+            </div>
+            <div id="edit-permissions-section" class="form-group">
+                <label>操作权限</label>
+                <div id="edit-permissions-list" class="permissions-checkbox-list"></div>
+                <div class="form-help">注：管理员角色自动拥有全部权限，无需额外配置</div>
+            </div>
+            <div class="form-group">
+                <label>状态</label>
+                <select name="is_active" id="edit-is-active">
+                    <option value="true">启用</option>
+                    <option value="false">禁用</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('edit-modal')">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 重置密码弹窗 -->
+<div id="reset-pwd-modal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <h3>重置密码</h3>
+            <span class="modal-close" onclick="closeModal('reset-pwd-modal')">&times;</span>
+        </div>
+        <form id="reset-pwd-form">
+            <input type="hidden" id="reset-user-id">
+            <p style="margin-bottom:15px;">正在为用户 <strong id="reset-username"></strong> 重置密码</p>
+            <div class="form-group">
+                <label>新密码 *</label>
+                <input type="password" name="password" required minlength="6">
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('reset-pwd-modal')">取消</button>
+                <button type="submit" class="btn btn-warning" style="background:#faad14;color:#fff;border-color:#faad14;">重置</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.permissions-checkbox-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    padding: 8px 0;
+}
+.permissions-checkbox-list label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: normal;
+    cursor: pointer;
+    font-size: 13px;
+}
+.permissions-checkbox-list input[type="checkbox"] {
+    width: auto;
+}
+.role-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.role-super-admin { background: #fff2f0; color: #ff4d4f; border: 1px solid #ffccc7; }
+.role-admin { background: #e6f7ff; color: #1890ff; border: 1px solid #bae7ff; }
+.role-user { background: #f5f5f5; color: #666; border: 1px solid #d9d9d9; }
+.perm-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    max-width: 240px;
+}
+.perm-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    background: #f6ffed;
+    color: #52c41a;
+    border: 1px solid #b7eb8f;
+    white-space: nowrap;
+}
+.perm-tag-all {
+    background: #e6f7ff;
+    color: #1890ff;
+    border: 1px solid #bae7ff;
+}
+.action-btns {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.btn-link {
+    background: none;
+    border: none;
+    color: #1890ff;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 12px;
+    text-decoration: none;
+}
+.btn-link:hover { color: #40a9ff; text-decoration: underline; }
+.btn-link.danger { color: #ff4d4f; }
+.btn-link.danger:hover { color: #ff7875; }
+
+.modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.45); z-index: 1000; overflow-y: auto; }
+.modal.show { display: flex; justify-content: center; align-items: flex-start; padding: 40px 0; }
+.modal-content { background: #fff; border-radius: 8px; width: 90%; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 24px; max-height: calc(100vh - 80px); overflow-y: auto; }
+.modal-close { font-size: 24px; cursor: pointer; color: #999; line-height: 1; }
+.modal-close:hover { color: #333; }
+
+@media (max-width: 768px) {
+    .permissions-checkbox-list { grid-template-columns: 1fr; }
+    .perm-tags { max-width: 160px; }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let availablePermissions = [];
+let currentUsers = [];
+
+function showCreateModal() {
+    loadPermissionsCheckboxes('create-permissions-list', []);
+    document.getElementById('create-form').reset();
+    document.getElementById('create-permissions-section').style.display = 'block';
+    showModal('create-modal');
+    
+    document.getElementById('create-role').onchange = function() {
+        document.getElementById('create-permissions-section').style.display = 
+            this.value === 'user' ? 'block' : 'none';
+    };
+}
+
+function showEditModal(userId) {
+    const user = currentUsers.find(u => u.id === userId);
+    if (!user) return;
+    
+    document.getElementById('edit-user-id').value = user.id;
+    document.getElementById('edit-username').value = user.username;
+    document.getElementById('edit-email').value = user.email;
+    document.getElementById('edit-role').value = user.role;
+    document.getElementById('edit-is-active').value = user.is_active ? 'true' : 'false';
+    
+    loadPermissionsCheckboxes('edit-permissions-list', user.permissions || []);
+    document.getElementById('edit-permissions-section').style.display = 
+        user.role === 'user' ? 'block' : 'none';
+    
+    showModal('edit-modal');
+    
+    document.getElementById('edit-role').onchange = function() {
+        document.getElementById('edit-permissions-section').style.display = 
+            this.value === 'user' ? 'block' : 'none';
+    };
+}
+
+function showResetPwdModal(userId) {
+    const user = currentUsers.find(u => u.id === userId);
+    if (!user) return;
+    
+    document.getElementById('reset-user-id').value = user.id;
+    document.getElementById('reset-username').textContent = user.username;
+    showModal('reset-pwd-modal');
+}
+
+function loadPermissionsCheckboxes(containerId, selectedPerms) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = availablePermissions.map(p => {
+        const checked = selectedPerms.includes(p.key) ? ' checked' : '';
+        return `<label><input type="checkbox" value="${p.key}"${checked}> ${p.label} <span style="color:#999;font-size:11px;">(${p.desc})</span></label>`;
+    }).join('');
+}
+
+function getCheckedPermissions(containerId) {
+    const checks = document.querySelectorAll(`#${containerId} input[type="checkbox"]:checked`);
+    return Array.from(checks).map(c => c.value);
+}
+
+function showModal(id) {
+    document.getElementById(id).classList.add('show');
+}
+function closeModal(id) {
+    document.getElementById(id).classList.remove('show');
+}
+
+// 加载用户列表
+function loadUsers() {
+    fetch('/auth/api/users')
+        .then(r => r.json())
+        .then(res => {
+            if (res.code !== 0) { alert(res.message); return; }
+            currentUsers = res.data.users;
+            availablePermissions = res.data.available_permissions || [];
+            renderUsers(currentUsers);
+        })
+        .catch(e => { console.error(e); alert('加载用户列表失败'); });
+}
+
+function renderUsers(users) {
+    const tbody = document.querySelector('#users-table tbody');
+    if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center">暂无用户</td></tr>';
+        return;
+    }
+    
+    const roleNames = { super_admin: '超级管理员', admin: '管理员', user: '普通用户' };
+    const roleClass = { super_admin: 'role-super-admin', admin: 'role-admin', user: 'role-user' };
+    
+    tbody.innerHTML = users.map(u => {
+        let permTags = '';
+        if (u.role === 'super_admin' || u.role === 'admin') {
+            permTags = '<span class="perm-tag perm-tag-all">全部权限</span>';
+        } else if (u.permissions && u.permissions.length > 0) {
+            const permLabels = {};
+            availablePermissions.forEach(p => { permLabels[p.key] = p.label; });
+            permTags = u.permissions.map(p => 
+                `<span class="perm-tag">${permLabels[p] || p}</span>`
+            ).join('');
+        } else {
+            permTags = '<span style="color:#999;font-size:12px;">仅浏览</span>';
+        }
+        
+        const isSelf = u.id === {{ current_user.id }};
+        let actions = '';
+        if (!isSelf) {
+            actions = `
+                <a href="javascript:void(0)" class="btn-link" onclick="showEditModal(${u.id})">编辑</a>
+                <a href="javascript:void(0)" class="btn-link" onclick="showResetPwdModal(${u.id})">重置密码</a>
+                <a href="javascript:void(0)" class="btn-link danger" onclick="deleteUser(${u.id}, '${u.username}')">删除</a>
+            `;
+        } else {
+            actions = '<span style="color:#999;font-size:12px;">当前用户</span>';
+        }
+        
+        return `<tr>
+            <td>${u.id}</td>
+            <td><strong>${u.username}</strong>${isSelf ? ' <span style="color:#1890ff;font-size:11px;">(你)</span>' : ''}</td>
+            <td>${u.email}</td>
+            <td><span class="role-badge ${roleClass[u.role] || ''}">${roleNames[u.role] || u.role}</span></td>
+            <td><div class="perm-tags">${permTags}</div></td>
+            <td>${u.is_active ? '<span class="badge badge-success">启用</span>' : '<span class="badge badge-danger">禁用</span>'}</td>
+            <td>${u.created_at || '-'}</td>
+            <td><div class="action-btns">${actions}</div></td>
+        </tr>`;
+    }).join('');
+}
+
+// 创建用户
+document.getElementById('create-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const role = formData.get('role');
+    const data = {
+        username: formData.get('username'),
+        email: formData.get('email'),
+        password: formData.get('password'),
+        role: role
+    };
+    if (role === 'user') {
+        data.permissions = getCheckedPermissions('create-permissions-list');
+    }
+    
+    fetch('/auth/api/users', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.code === 0) {
+            closeModal('create-modal');
+            loadUsers();
+            alert(res.message);
+        } else {
+            alert(res.message);
+        }
+    });
+});
+
+// 编辑用户
+document.getElementById('edit-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const userId = document.getElementById('edit-user-id').value;
+    const role = document.getElementById('edit-role').value;
+    const data = {
+        email: document.getElementById('edit-email').value,
+        role: role,
+        is_active: document.getElementById('edit-is-active').value === 'true'
+    };
+    if (role === 'user') {
+        data.permissions = getCheckedPermissions('edit-permissions-list');
+    } else {
+        data.permissions = [];
+    }
+    
+    fetch(`/auth/api/users/${userId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.code === 0) {
+            closeModal('edit-modal');
+            loadUsers();
+            alert(res.message);
+        } else {
+            alert(res.message);
+        }
+    });
+});
+
+// 重置密码
+document.getElementById('reset-pwd-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const userId = document.getElementById('reset-user-id').value;
+    const password = this.querySelector('input[name="password"]').value;
+    
+    fetch(`/auth/api/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ password: password })
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.code === 0) {
+            closeModal('reset-pwd-modal');
+            alert(res.message);
+        } else {
+            alert(res.message);
+        }
+    });
+});
+
+// 删除用户
+function deleteUser(userId, username) {
+    if (!confirm(`确定要删除用户 "${username}" 吗？此操作不可恢复！`)) return;
+    
+    fetch(`/auth/api/users/${userId}`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(res => {
+        if (res.code === 0) {
+            loadUsers();
+        }
+        alert(res.message);
+    });
+}
+
+// 页面加载
+loadUsers();
+
+// 点击弹窗外部关闭
+document.querySelectorAll('.modal').forEach(m => {
+    m.addEventListener('click', function(e) {
+        if (e.target === this) closeModal(this.id);
+    });
+});
+</script>
+{% endblock %}
