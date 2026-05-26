@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}{{ report.title }} - WiseReporter{% endblock %}
+
+{% block content %}
+<div class="report-detail">
+    <div class="report-header">
+        <h1>{{ report.title }}</h1>
+        <div class="report-meta">
+            <span>周期: {{ report.period_start|format_date }} ~ {{ report.period_end|format_date }}</span>
+            <span>生成时间: {{ report.created_at|format_date('%Y-%m-%d %H:%M') if report.created_at else '-' }}</span>
+            <span class="badge badge-{{ 'success' if report.status == 'published' else 'secondary' }}">
+                {{ '已发布' if report.status == 'published' else '草稿' }}
+            </span>
+        </div>
+        <div class="report-stats">
+            <span>文章: {{ report.article_count }}篇</span>
+            <span>AI资讯: {{ report.ai_news_count }}条</span>
+        </div>
+    </div>
+    
+    <div class="report-actions">
+        {% if report.status == 'draft' %}
+        <button onclick="publishReport({{ report.id }})" class="btn btn-primary">发布</button>
+        {% endif %}
+        <button onclick="copyMarkdown()" class="btn">复制Markdown</button>
+        <a href="{{ url_for('main.reports') }}" class="btn">返回列表</a>
+    </div>
+    
+    <div class="report-content">
+        <div id="reportMarkdown" style="display:none;">{{ report.content }}</div>
+        <div id="reportHtml" class="markdown-body">
+            <!-- Markdown内容将通过JS渲染 -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const markdown = document.getElementById('reportMarkdown').textContent;
+    document.getElementById('reportHtml').innerHTML = marked.parse(markdown);
+});
+
+async function publishReport(id) {
+    try {
+        const response = await fetch(`/api/reports/${id}/publish`, { method: 'POST' });
+        const result = await response.json();
+        if (result.code === 0) {
+            alert('发布成功');
+            location.reload();
+        }
+    } catch (error) {
+        alert('请求失败: ' + error.message);
+    }
+}
+
+function copyMarkdown() {
+    const markdown = document.getElementById('reportMarkdown').textContent;
+    navigator.clipboard.writeText(markdown).then(() => {
+        alert('已复制到剪贴板');
+    });
+}
+</script>
+<style>
+.markdown-body {
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    line-height: 1.8;
+}
+.markdown-body h1 { font-size: 2em; border-bottom: 2px solid #333; padding-bottom: 10px; }
+.markdown-body h2 { font-size: 1.5em; border-bottom: 1px solid #ddd; padding-bottom: 8px; margin-top: 30px; }
+.markdown-body h3 { font-size: 1.2em; margin-top: 20px; }
+.markdown-body p { margin: 10px 0; }
+.markdown-body ul, .markdown-body ol { padding-left: 30px; }
+.markdown-body li { margin: 5px 0; }
+.markdown-body a { color: #1890ff; text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; }
+.markdown-body blockquote { border-left: 4px solid #ddd; padding-left: 15px; color: #666; }
+</style>
+{% endblock %}

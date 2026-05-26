@@ -1,0 +1,783 @@
+{% extends "base.html" %}
+
+{% block title %}系统设置 - WiseReporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>系统设置</h1>
+</div>
+
+<div class="settings-container">
+    <!-- 自动采集设置 -->
+    <div class="settings-section">
+        <h2><i class="icon-clock"></i> 自动采集任务</h2>
+        <p class="section-desc">配置定时自动采集任务，支持AI资讯和教育资讯的定时采集</p>
+        
+        <div class="task-list-header">
+            <button class="btn btn-primary" onclick="showCreateTaskModal()">
+                <i class="icon-plus"></i> 新增任务
+            </button>
+        </div>
+        
+        <div class="task-list" id="taskList">
+            <!-- 任务卡片将通过JS动态加载 -->
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+    
+    <!-- 基本设置 -->
+    <div class="settings-section">
+        <h2><i class="icon-settings"></i> 基本设置</h2>
+        <div class="form-group">
+            <label>系统名称</label>
+            <input type="text" value="WiseReporter" readonly>
+        </div>
+        <div class="form-group">
+            <label>版本</label>
+            <input type="text" value="1.0.0 (MVP)" readonly>
+        </div>
+    </div>
+    
+    <!-- 采集设置 -->
+    <div class="settings-section">
+        <h2><i class="icon-crawl"></i> 采集设置</h2>
+        <div class="form-group">
+            <label>Cookie池最小数量</label>
+            <input type="number" id="minCookieCount" value="3" min="1" max="10">
+            <small class="form-text">低于此数量时将提醒补充Cookie</small>
+        </div>
+        <div class="form-group">
+            <label>请求超时（秒）</label>
+            <input type="number" id="requestTimeout" value="30" min="10" max="120">
+        </div>
+        <div class="form-group">
+            <label>采集间隔（秒）</label>
+            <input type="number" id="crawlInterval" value="30" min="10" max="300">
+            <small class="form-text">两次采集之间的最小间隔</small>
+        </div>
+    </div>
+    
+    <!-- 周报设置 -->
+    <div class="settings-section">
+        <h2><i class="icon-report"></i> 周报设置</h2>
+        <div class="form-group">
+            <label>默认周报周期</label>
+            <select id="reportPeriod">
+                <option value="7">7天</option>
+                <option value="14">14天</option>
+                <option value="30">30天</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="autoReport">
+                自动生成周报
+            </label>
+        </div>
+    </div>
+    
+    <div class="form-actions">
+        <button class="btn btn-primary" id="btnSaveSettings">
+            <i class="icon-save"></i> 保存设置
+        </button>
+    </div>
+</div>
+
+<!-- 任务编辑模态框 -->
+<div class="modal" id="taskModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="taskModalTitle">编辑采集任务</h3>
+            <button class="modal-close" onclick="closeTaskModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="taskId">
+            <input type="hidden" id="taskMode" value="edit">
+            
+            <div class="form-group">
+                <label>任务标识 <span class="required">*</span></label>
+                <input type="text" id="taskName" class="form-control" placeholder="如: custom_news_1" readonly>
+                <small class="form-text">唯一标识，用于系统识别（编辑模式下不可修改）</small>
+            </div>
+            
+            <div class="form-group">
+                <label>任务类型 <span class="required">*</span></label>
+                <select id="taskType" class="form-control" onchange="onTaskTypeChange()">
+                    <option value="">请选择任务类型</option>
+                    <option value="ai_news">AI资讯采集</option>
+                    <option value="education_news">教育资讯采集</option>
+                    <option value="wechat_search">微信公众号搜索</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>显示名称 <span class="required">*</span></label>
+                <input type="text" id="taskDisplayName" class="form-control" placeholder="任务显示名称">
+            </div>
+            
+            <div class="form-group">
+                <label>任务描述</label>
+                <input type="text" id="taskDescription" class="form-control" placeholder="简要描述此任务">
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="taskEnabled" checked>
+                    <span>启用此任务</span>
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label>执行时间</label>
+                <div class="time-input-group">
+                    <input type="number" id="taskHour" min="0" max="23" value="2">
+                    <span>:</span>
+                    <input type="number" id="taskMinute" min="0" max="59" value="0">
+                </div>
+                <small class="form-text">每天执行的时间（24小时制）</small>
+            </div>
+            
+            <div class="form-group">
+                <label>每周执行（可选）</label>
+                <div class="weekday-selector">
+                    <label><input type="checkbox" value="mon"> 周一</label>
+                    <label><input type="checkbox" value="tue"> 周二</label>
+                    <label><input type="checkbox" value="wed"> 周三</label>
+                    <label><input type="checkbox" value="thu"> 周四</label>
+                    <label><input type="checkbox" value="fri"> 周五</label>
+                    <label><input type="checkbox" value="sat"> 周六</label>
+                    <label><input type="checkbox" value="sun"> 周日</label>
+                </div>
+                <small class="form-text">留空表示每天执行</small>
+            </div>
+            
+            <div class="form-group" id="keywordsGroup">
+                <label>搜索关键词</label>
+                <input type="text" id="taskKeywords" class="form-control" placeholder="多个关键词用逗号分隔，如: AI,人工智能,ChatGPT">
+                <small class="form-text">用于微信公众号搜索任务</small>
+            </div>
+            
+            <div class="form-group">
+                <label>采集数量</label>
+                <input type="number" id="taskMaxCount" min="1" max="100" value="20">
+                <small class="form-text">每次任务采集的最大文章数量</small>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="taskAutoCrawl" checked>
+                    <span>自动采集文章全文</span>
+                </label>
+                <small class="form-text">采集链接后自动获取完整文章内容</small>
+            </div>
+            
+            <div class="task-status-info" id="taskStatusInfo" style="display:none;">
+                <p><strong>上次执行：</strong><span id="lastRun">-</span></p>
+                <p><strong>状态：</strong><span id="lastStatus">-</span></p>
+                <p><strong>消息：</strong><span id="lastMessage">-</span></p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger" id="btnDeleteTask" onclick="deleteTask()" style="margin-right:auto;display:none;">
+                <i class="icon-trash"></i> 删除
+            </button>
+            <button class="btn btn-secondary" onclick="closeTaskModal()">取消</button>
+            <button class="btn btn-primary" id="btnSaveTask">保存</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.settings-container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.settings-section {
+    background: white;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.settings-section h2 {
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.section-desc {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    color: #555;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group select {
+    width: 100%;
+    max-width: 400px;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #4a90d9;
+    box-shadow: 0 0 0 2px rgba(74,144,217,0.1);
+}
+
+.form-text {
+    font-size: 12px;
+    color: #888;
+    margin-top: 4px;
+}
+
+.form-actions {
+    padding: 16px 0;
+}
+
+/* 任务列表样式 */
+.task-list {
+    display: grid;
+    gap: 16px;
+}
+
+.task-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.task-card:hover {
+    border-color: #4a90d9;
+    box-shadow: 0 2px 8px rgba(74,144,217,0.1);
+}
+
+.task-card.disabled {
+    opacity: 0.6;
+    background: #f1f3f4;
+}
+
+.task-info h4 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    color: #333;
+}
+
+.task-info p {
+    margin: 0;
+    font-size: 13px;
+    color: #666;
+}
+
+.task-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.task-time {
+    font-size: 13px;
+    color: #888;
+}
+
+.task-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-badge.enabled {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-badge.disabled {
+    background: #e9ecef;
+    color: #6c757d;
+}
+
+/* 模态框样式 */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal.show {
+    display: flex;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 8px;
+    width: 500px;
+    max-width: 90%;
+    max-height: 90vh;
+    overflow: auto;
+}
+
+.modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #888;
+}
+
+.modal-close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.time-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.time-input-group input {
+    width: 80px !important;
+    text-align: center;
+}
+
+.weekday-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.weekday-selector label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+.checkbox-label {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+}
+
+.task-status-info {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 4px;
+    margin-top: 16px;
+}
+
+.task-status-info p {
+    margin: 4px 0;
+    font-size: 13px;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #888;
+}
+
+.task-list-header {
+    margin-bottom: 16px;
+}
+
+.required {
+    color: #dc3545;
+}
+
+#keywordsGroup {
+    display: none;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    background: #c82333;
+}
+
+.task-type-desc {
+    font-size: 12px;
+    color: #888;
+    margin-top: 2px;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // 加载任务列表
+    loadTasks();
+    
+    // 绑定保存设置按钮
+    $('#btnSaveSettings').on('click', saveSettings);
+    
+    // 绑定保存任务按钮
+    $('#btnSaveTask').on('click', saveTask);
+});
+
+function loadTasks() {
+    $.ajax({
+        url: '/api/settings/tasks',
+        method: 'GET',
+        success: function(res) {
+            if (res.code === 0) {
+                renderTaskList(res.data);
+            }
+        },
+        error: function() {
+            $('#taskList').html('<div class="alert alert-danger">加载任务失败</div>');
+        }
+    });
+}
+
+function renderTaskList(tasks) {
+    if (!tasks || tasks.length === 0) {
+        $('#taskList').html('<div class="alert alert-info">暂无采集任务，点击上方"新增任务"创建</div>');
+        return;
+    }
+    
+    let html = '';
+    tasks.forEach(function(task) {
+        const statusClass = task.is_enabled ? 'enabled' : 'disabled';
+        const cardClass = task.is_enabled ? '' : 'disabled';
+        const statusText = task.is_enabled ? '已启用' : '已禁用';
+        const timeText = formatTime(task.cron_hour, task.cron_minute);
+        const runText = task.last_run ? `上次: ${task.last_run}` : '从未执行';
+        
+        html += `
+        <div class="task-card ${cardClass}" data-id="${task.id}">
+            <div class="task-info">
+                <h4>${task.display_name}</h4>
+                <p>${task.description || '自动采集任务'}</p>
+                <p class="task-time">执行时间: ${timeText} ${task.cron_day_of_week ? '(按周)' : '(每天)'} | ${runText}</p>
+            </div>
+            <div class="task-status">
+                <span class="status-badge ${statusClass}">${statusText}</span>
+                <div class="task-actions">
+                    <button class="btn btn-sm btn-primary" onclick="editTask(${task.id})">
+                        <i class="icon-edit"></i> 编辑
+                    </button>
+                </div>
+            </div>
+        </div>
+        `;
+    });
+    
+    $('#taskList').html(html);
+}
+
+function formatTime(hour, minute) {
+    return String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+}
+
+function editTask(taskId) {
+    // 加载任务详情
+    $.ajax({
+        url: '/api/settings/tasks/' + taskId,
+        method: 'GET',
+        success: function(res) {
+            if (res.code === 0) {
+                showTaskModal(res.data);
+            } else {
+                alert('加载任务失败: ' + res.message);
+            }
+        },
+        error: function() {
+            alert('加载任务失败');
+        }
+    });
+}
+
+function showTaskModal(task) {
+    $('#taskMode').val('edit');
+    $('#taskModalTitle').text('编辑采集任务');
+    $('#taskId').val(task.id);
+    $('#taskName').val(task.task_name).prop('readonly', true);
+    $('#taskType').val(task.task_type).prop('disabled', true);
+    $('#taskDisplayName').val(task.display_name);
+    $('#taskDescription').val(task.description || '');
+    $('#taskEnabled').prop('checked', task.is_enabled);
+    $('#taskHour').val(task.cron_hour);
+    $('#taskMinute').val(task.cron_minute);
+    $('#taskMaxCount').val(task.max_count);
+    $('#taskAutoCrawl').prop('checked', task.auto_crawl_content);
+    $('#taskKeywords').val(task.keywords ? task.keywords.join(',') : '');
+    
+    // 解析每周执行日
+    const days = task.cron_day_of_week ? task.cron_day_of_week.split(',') : [];
+    $('#taskModal .weekday-selector input').prop('checked', false);
+    days.forEach(function(day) {
+        $(`#taskModal .weekday-selector input[value="${day}"]`).prop('checked', true);
+    });
+    
+    // 显示/隐藏关键词输入
+    $('#keywordsGroup').toggle(task.task_type === 'wechat_search');
+    
+    // 显示上次执行状态
+    $('#taskStatusInfo').show();
+    $('#lastRun').text(task.last_run || '从未执行');
+    $('#lastStatus').text(task.last_status || '-');
+    $('#lastMessage').text(task.last_message || '-');
+    
+    // 显示删除按钮
+    $('#btnDeleteTask').show();
+    $('#btnSaveTask').text('保存修改');
+    
+    $('#taskModal').addClass('show');
+}
+
+function showCreateTaskModal() {
+    $('#taskMode').val('create');
+    $('#taskModalTitle').text('新增采集任务');
+    $('#taskId').val('');
+    $('#taskName').val('').prop('readonly', false);
+    $('#taskType').val('').prop('disabled', false);
+    $('#taskDisplayName').val('');
+    $('#taskDescription').val('');
+    $('#taskEnabled').prop('checked', true);
+    $('#taskHour').val(2);
+    $('#taskMinute').val(0);
+    $('#taskMaxCount').val(20);
+    $('#taskAutoCrawl').prop('checked', true);
+    $('#taskKeywords').val('');
+    
+    // 重置每周执行日
+    $('#taskModal .weekday-selector input').prop('checked', false);
+    
+    // 隐藏关键词输入和状态信息
+    $('#keywordsGroup').hide();
+    $('#taskStatusInfo').hide();
+    
+    // 隐藏删除按钮
+    $('#btnDeleteTask').hide();
+    $('#btnSaveTask').text('创建任务');
+    
+    $('#taskModal').addClass('show');
+}
+
+function onTaskTypeChange() {
+    const type = $('#taskType').val();
+    // 根据任务类型显示/隐藏关键词输入
+    $('#keywordsGroup').toggle(type === 'wechat_search');
+    
+    // 自动填充显示名称
+    const typeNames = {
+        'ai_news': 'AI资讯采集',
+        'education_news': '教育资讯采集',
+        'wechat_search': '微信公众号搜索'
+    };
+    if (typeNames[type] && !$('#taskDisplayName').val()) {
+        $('#taskDisplayName').val(typeNames[type]);
+    }
+}
+
+function closeTaskModal() {
+    $('#taskModal').removeClass('show');
+}
+
+function saveTask() {
+    const mode = $('#taskMode').val();
+    const selectedDays = [];
+    $('#taskModal .weekday-selector input:checked').each(function() {
+        selectedDays.push($(this).val());
+    });
+    
+    // 验证必填字段
+    if (!$('#taskName').val().trim()) {
+        alert('请输入任务标识');
+        return;
+    }
+    if (!$('#taskType').val()) {
+        alert('请选择任务类型');
+        return;
+    }
+    if (!$('#taskDisplayName').val().trim()) {
+        alert('请输入显示名称');
+        return;
+    }
+    
+    const data = {
+        task_name: $('#taskName').val().trim(),
+        task_type: $('#taskType').val(),
+        display_name: $('#taskDisplayName').val().trim(),
+        description: $('#taskDescription').val().trim(),
+        is_enabled: $('#taskEnabled').prop('checked'),
+        cron_hour: parseInt($('#taskHour').val()),
+        cron_minute: parseInt($('#taskMinute').val()),
+        cron_day_of_week: selectedDays.length > 0 ? selectedDays.join(',') : null,
+        keywords: $('#taskKeywords').val().trim(),
+        max_count: parseInt($('#taskMaxCount').val()),
+        auto_crawl_content: $('#taskAutoCrawl').prop('checked')
+    };
+    
+    let url, method;
+    if (mode === 'create') {
+        url = '/api/settings/tasks';
+        method = 'POST';
+    } else {
+        url = '/api/settings/tasks/' + $('#taskId').val();
+        method = 'PUT';
+    }
+    
+    $.ajax({
+        url: url,
+        method: method,
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        success: function(res) {
+            if (res.code === 0) {
+                closeTaskModal();
+                loadTasks();
+                alert(mode === 'create' ? '任务创建成功' : '保存成功');
+            } else {
+                alert('操作失败: ' + res.message);
+            }
+        },
+        error: function(xhr) {
+            let msg = '操作失败';
+            try {
+                const res = JSON.parse(xhr.responseText);
+                msg = res.message || msg;
+            } catch(e) {}
+            alert(msg);
+        }
+    });
+}
+
+function deleteTask() {
+    const taskId = $('#taskId').val();
+    if (!taskId) return;
+    
+    if (!confirm('确定要删除这个任务吗？删除后不可恢复。')) {
+        return;
+    }
+    
+    $.ajax({
+        url: '/api/settings/tasks/' + taskId,
+        method: 'DELETE',
+        success: function(res) {
+            if (res.code === 0) {
+                closeTaskModal();
+                loadTasks();
+                alert('任务已删除');
+            } else {
+                alert('删除失败: ' + res.message);
+            }
+        },
+        error: function() {
+            alert('删除失败');
+        }
+    });
+}
+
+function saveSettings() {
+    const settings = {
+        min_cookie_count: parseInt($('#minCookieCount').val()),
+        request_timeout: parseInt($('#requestTimeout').val()),
+        crawl_interval: parseInt($('#crawlInterval').val()),
+        report_period: parseInt($('#reportPeriod').val()),
+        auto_report: $('#autoReport').prop('checked')
+    };
+    
+    $.ajax({
+        url: '/api/settings/save',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(settings),
+        success: function(res) {
+            if (res.code === 0) {
+                alert('设置已保存');
+            } else {
+                alert('保存失败: ' + res.message);
+            }
+        },
+        error: function() {
+            alert('保存失败');
+        }
+    });
+}
+
+// 点击模态框外部关闭
+$('#taskModal').on('click', function(e) {
+    if (e.target === this) {
+        closeTaskModal();
+    }
+});
+</script>
+{% endblock %}

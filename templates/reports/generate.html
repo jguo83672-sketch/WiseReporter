@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}生成周报 - WiseReporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>生成周报</h1>
+</div>
+
+<div class="generate-form">
+    <form method="post">
+        <div class="form-group">
+            <label>周报周期</label>
+            <div class="date-range">
+                <input type="date" name="start_date" required>
+                <span>至</span>
+                <input type="date" name="end_date" required>
+            </div>
+            <p class="form-help">默认采集过去7天的数据</p>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">生成周报</button>
+            <a href="{{ url_for('main.reports') }}" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+
+{% block title %}文章采集 - WiseReporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>文章采集</h1>
+</div>
+
+<div class="crawl-container">
+    <div class="crawl-grid">
+        <!-- 单篇采集 -->
+        <div class="crawl-card">
+            <div class="card-header">
+                <h3><i class="icon-single"></i> 单篇采集</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label>文章URL</label>
+                    <input type="url" id="singleUrl" class="form-control" placeholder="https://mp.weixin.qq.com/s/...">
+                </div>
+                <div class="form-group">
+                    <label>选择公众号（可选）</label>
+                    <select id="singleAccount" class="form-control">
+                        <option value="">不关联</option>
+                        {% for account in accounts %}
+                        <option value="{{ account.account_id }}">{{ account.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button id="btnCrawlSingle" class="btn btn-primary btn-block">
+                    <i class="icon-crawl"></i> 开始采集
+                </button>
+                <div id="singleResult" class="result-area"></div>
+            </div>
+        </div>
+
+        <!-- 批量采集 -->
+        <div class="crawl-card">
+            <div class="card-header">
+                <h3><i class="icon-batch"></i> 批量采集</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label>选择公众号</label>
+                    <select id="batchAccount" class="form-control">
+                        <option value="">全部启用公众号</option>
+                        {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>采集数量</label>
+                    <select id="batchCount" class="form-control">
+                        <option value="5">5篇</option>
+                        <option value="10">10篇</option>
+                        <option value="20" selected>20篇</option>
+                        <option value="50">50篇</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>选择Cookie账号</label>
+                    <select id="batchCookie" class="form-control">
+                        <option value="">自动选择</option>
+                        {% for cookie in cookies %}
+                        <option value="{{ cookie.id }}">{{ cookie.name }} ({{ cookie.wxuin or '未知' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button id="btnCrawlBatch" class="btn btn-success btn-block">
+                    <i class="icon-play"></i> 开始批量采集
+                </button>
+                <div id="batchResult" class="result-area"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cookie状态 -->
+    <div class="crawl-card full-width">
+        <div class="card-header">
+            <h3><i class="icon-cookie"></i> Cookie状态</h3>
+            <a href="{{ url_for('main.cookies') }}" class="btn btn-sm btn-outline">管理Cookie</a>
+        </div>
+        <div class="card-body">
+            {% if cookies %}
+            <div class="cookie-list">
+                {% for cookie in cookies %}
+                <div class="cookie-item {% if not cookie.is_available %}inactive{% endif %}">
+                    <div class="cookie-info">
+                        <span class="cookie-name">{{ cookie.name }}</span>
+                        <code class="cookie-wxuin">{{ cookie.wxuin or '-' }}</code>
+                    </div>
+                    <div class="cookie-status">
+                        {% if cookie.is_available %}
+                            <span class="status-badge available">可用</span>
+                        {% else %}
+                            <span class="status-badge unavailable">不可用</span>
+                        {% endif %}
+                        <span class="failure-count">失败 {{ cookie.failure_count }} 次</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state small">
+                <p>暂无可用的Cookie账号</p>
+                <a href="{{ url_for('main.cookies') }}" class="btn btn-primary">前往添加</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 采集说明 -->
+    <div class="crawl-card full-width tips-card">
+        <div class="card-header">
+            <h3><i class="icon-tips"></i> 采集说明</h3>
+        </div>
+        <div class="card-body">
+            <ul class="tips-list">
+                <li><strong>单篇采集：</strong>输入微信公众号文章链接，直接采集单篇文章内容</li>
+                <li><strong>批量采集：</strong>选择公众号后，按照设定的数量批量采集该公众号的最新文章</li>
+                <li><strong>Cookie账号：</strong>用于模拟登录状态，请确保Cookie有效，过期的Cookie会导致采集失败</li>
+                <li><strong>注意事项：</strong>请勿频繁采集，建议间隔30秒以上，避免被微信公众号平台限制</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.crawl-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.crawl-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.crawl-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.crawl-card.full-width {
+    grid-column: 1 / -1;
+}
+
+.crawl-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.crawl-card .card-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.crawl-card .card-header h3::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 18px;
+    background: #007bff;
+    border-radius: 2px;
+}
+
+.tips-card .card-header h3::before {
+    background: #17a2b8;
+}
+
+.crawl-card .card-body {
+    padding: 0;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    color: #555;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.form-control {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+.btn-success {
+    background: #28a745;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #1e7e34;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}
+
+.btn-outline {
+    background: transparent;
+    border: 1px solid #ddd;
+    color: #666;
+}
+
+.btn-outline:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.btn-block {
+    width: 100%;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+.result-area {
+    margin-top: 15px;
+    min-height: 40px;
+}
+
+.result-area .alert {
+    padding: 12px 15px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.result-area .alert-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.result-area .alert-danger {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.result-area .alert-info {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+/* Cookie列表 */
+.cookie-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 15px;
+}
+
+.cookie-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.cookie-item:hover {
+    background: #f0f0f0;
+}
+
+.cookie-item.inactive {
+    opacity: 0.6;
+}
+
+.cookie-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cookie-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.cookie-wxuin {
+    font-size: 12px;
+    background: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #666;
+}
+
+.cookie-status {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.status-badge {
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-badge.available {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-badge.unavailable {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.failure-count {
+    font-size: 11px;
+    color: #999;
+}
+
+/* 提示卡片 */
+.tips-card {
+    background: #f8f9fa;
+}
+
+.tips-card .card-body {
+    padding: 0;
+}
+
+.tips-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.tips-list li {
+    margin-bottom: 10px;
+    color: #555;
+    line-height: 1.6;
+}
+
+.tips-list li:last-child {
+    margin-bottom: 0;
+}
+
+.tips-list strong {
+    color: #333;
+}
+
+/* 空状态 */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.empty-state.small {
+    padding: 20px;
+}
+
+.empty-state p {
+    color: #999;
+    margin-bottom: 15px;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .crawl-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .cookie-list {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // 单篇采集
+    $('#btnCrawlSingle').on('click', function() {
+        const url = $('#singleUrl').val();
+        const accountId = $('#singleAccount').val();
+        
+        if (!url) {
+            $('#singleResult').html('<div class="alert alert-danger">请输入文章URL</div>');
+            return;
+        }
+        
+        const btn = $(this);
+        btn.prop('disabled', true);
+        btn.text('采集中...');
+        $('#singleResult').html('<div class="alert alert-info">正在采集中，请稍候...</div>');
+        
+        $.ajax({
+            url: '/api/wechat/crawl',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ url: url, account_id: accountId }),
+            success: function(res) {
+                try {
+                    if (res.code === 0) {
+                        $('#singleResult').html('<div class="alert alert-success">' + res.message + '</div>');
+                        $('#singleUrl').val('');
+                    } else {
+                        $('#singleResult').html('<div class="alert alert-danger">' + res.message + '</div>');
+                    }
+                } catch (e) {
+                    $('#singleResult').html('<div class="alert alert-danger">处理响应时出错: ' + e.message + '</div>');
+                }
+            },
+            error: function(xhr, status, error) {
+                $('#singleResult').html('<div class="alert alert-danger">请求失败: ' + error + '</div>');
+            },
+            complete: function() {
+                btn.prop('disabled', false);
+                btn.html('<i class="icon-crawl"></i> 开始采集');
+            }
+        });
+    });
+
+    // 批量采集
+    $('#btnCrawlBatch').on('click', function() {
+        const accountId = $('#batchAccount').val();
+        const count = $('#batchCount').val();
+        const cookieId = $('#batchCookie').val();
+        
+        const btn = $(this);
+        btn.prop('disabled', true);
+        btn.text('采集中...');
+        $('#batchResult').html('<div class="alert alert-info">正在采集中，请稍候...</div>');
+        
+        $.ajax({
+            url: '/api/crawl/batch',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ account_id: accountId, count: parseInt(count), cookie_id: cookieId }),
+            success: function(res) {
+                try {
+                    if (res.code === 0) {
+                        $('#batchResult').html('<div class="alert alert-success">' + res.message + '</div>');
+                    } else {
+                        $('#batchResult').html('<div class="alert alert-danger">' + res.message + '</div>');
+                    }
+                } catch (e) {
+                    $('#batchResult').html('<div class="alert alert-danger">处理响应时出错: ' + e.message + '</div>');
+                }
+            },
+            error: function(xhr, status, error) {
+                $('#batchResult').html('<div class="alert alert-danger">请求失败: ' + error + '</div>');
+            },
+            complete: function() {
+                btn.prop('disabled', false);
+                btn.html('<i class="icon-play"></i> 开始批量采集');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

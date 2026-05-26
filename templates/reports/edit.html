@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}编辑周报 - WiseReporter{% endblock %}
+
+{% block content %}
+<div class="report-edit">
+    <div class="page-header">
+        <h1>编辑周报</h1>
+        <a href="{{ url_for('main.report_detail', report_id=report.id) }}" class="btn">取消</a>
+    </div>
+
+    <form method="POST" class="report-form">
+        <div class="form-group">
+            <label for="title">标题</label>
+            <input type="text" id="title" name="title" value="{{ report.title }}" required class="form-control">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="period_start">周期开始</label>
+                <input type="date" id="period_start" name="period_start"
+                       value="{{ report.period_start.strftime('%Y-%m-%d') if report.period_start else '' }}" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="period_end">周期结束</label>
+                <input type="date" id="period_end" name="period_end"
+                       value="{{ report.period_end.strftime('%Y-%m-%d') if report.period_end else '' }}" class="form-control">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="content">内容 (Markdown)</label>
+            <textarea id="content" name="content" rows="20" class="form-control">{{ report.content }}</textarea>
+            <small class="form-text text-muted">支持 Markdown 格式</small>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">保存修改</button>
+            <a href="{{ url_for('main.report_detail', report_id=report.id) }}" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.report-form {
+    max-width: 900px;
+    margin: 0 auto;
+}
+.form-group {
+    margin-bottom: 20px;
+}
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+.form-row {
+    display: flex;
+    gap: 20px;
+}
+.form-row .form-group {
+    flex: 1;
+}
+textarea#content {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+}
+.form-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+}
+</style>
+{% endblock %}

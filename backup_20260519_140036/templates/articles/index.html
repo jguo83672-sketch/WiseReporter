@@ -1,0 +1,441 @@
+{% extends "base.html" %}
+
+{% block title %}文章列表 - WiseReporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>文章列表</h1>
+    <a href="{{ url_for('main.crawl') }}" class="btn btn-primary">采集文章</a>
+</div>
+
+<div class="filter-bar">
+    <form method="get" class="filter-form" id="filterForm">
+        <div class="filter-row">
+            <div class="filter-group">
+                <label>类型：</label>
+                <select name="type" onchange="document.getElementById('filterForm').submit()">
+                    <option value="all" {% if current_type == 'all' %}selected{% endif %}>全部</option>
+                    <option value="wechat" {% if current_type == 'wechat' %}selected{% endif %}>公众号</option>
+                    <option value="article" {% if current_type == 'article' %}selected{% endif %}>本地文章</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>公众号：</label>
+                <select name="account_id" onchange="document.getElementById('filterForm').submit()">
+                    <option value="">全部公众号</option>
+                    {% for acc in all_accounts %}
+                    <option value="{{ acc.id }}" {% if current_account_id == acc.id %}selected{% endif %}>{{ acc.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>分类：</label>
+                <select name="category" onchange="document.getElementById('filterForm').submit()">
+                    <option value="">全部分类</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group search-group">
+                <label>搜索：</label>
+                <input type="text" name="keyword" placeholder="搜索标题/摘要" value="{{ keyword or '' }}">
+                <button type="submit" class="btn btn-sm btn-primary">搜索</button>
+                {% if keyword %}
+                <a href="{{ url_for('main.articles', account_id=current_account_id, category=current_category, type=current_type) }}" class="btn btn-sm">清除</a>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if pagination.total > 0 %}
+        <div class="source-stats">
+            <span class="stat-item">共 {{ pagination.total }} 篇文章</span>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+<div class="articles-grid">
+    {% for article in articles %}
+    <div class="article-card {% if article.is_favorite %}favorite{% endif %}">
+        <div class="card-header">
+            {% if article.category %}
+            <span class="category-badge">{{ article.category }}</span>
+            {% endif %}
+            {% if article.content_type == 'wechat' %}
+            <span class="category-badge wechat-badge">公众号</span>
+            {% endif %}
+            <div class="header-badges">
+                {% if article.is_favorite %}
+                <span class="favorite-badge">★</span>
+                {% endif %}
+                {% if article.is_important %}
+                <span class="important-badge">重要</span>
+                {% endif %}
+            </div>
+        </div>
+        <h3>
+            <a href="{{ url_for('main.article_detail', article_id=article.id) }}">{{ article.title }}</a>
+        </h3>
+        <div class="article-meta">
+            <span class="account">
+                <i class="icon-account"></i>
+                {{ article.account_name or '未知公众号' }}
+            </span>
+            <span class="date">
+                <i class="icon-calendar"></i>
+                {{ article.publish_date|format_date if article.publish_date else (article.created_at|format_date if article.created_at else '-') }}
+            </span>
+        </div>
+        {% if article.summary %}
+        <p class="article-summary">{{ article.summary[:150] }}{% if article.summary|length > 150 %}...{% endif %}</p>
+        {% endif %}
+        <div class="card-actions">
+            <a href="{{ url_for('main.article_detail', article_id=article.id) }}" class="btn btn-sm">查看详情</a>
+            <a href="{{ article.url }}" target="_blank" class="btn btn-sm">原文链接</a>
+            <button onclick="toggleFavorite({{ article.id }})" class="btn btn-sm {% if article.is_favorite %}btn-warning{% endif %}">
+                {{ '取消收藏' if article.is_favorite else '收藏' }}
+            </button>
+            <button onclick="deleteArticle({{ article.id }})" class="btn btn-sm btn-danger">删除</button>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>暂无文章</p>
+        {% if keyword %}
+        <p class="hint">没有找到包含"{{ keyword }}"的相关内容</p>
+        {% endif %}
+        <a href="{{ url_for('main.crawl') }}" class="btn btn-primary">立即采集</a>
+    </div>
+    {% endfor %}
+</div>
+
+{% if pagination.pages > 1 %}
+<div class="pagination">
+    {% if pagination.has_prev %}
+    <a href="{{ url_for('main.articles', page=pagination.prev_num, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">上一页</a>
+    {% endif %}
+    
+    {% set start_page = 1 %}
+    {% set end_page = pagination.pages %}
+    {% if pagination.pages > 7 %}
+        {% if pagination.page <= 4 %}
+            {% set start_page = 1 %}
+            {% set end_page = 7 %}
+        {% elif pagination.page >= pagination.pages - 3 %}
+            {% set start_page = pagination.pages - 6 %}
+            {% set end_page = pagination.pages %}
+        {% else %}
+            {% set start_page = pagination.page - 3 %}
+            {% set end_page = pagination.page + 3 %}
+        {% endif %}
+    {% endif %}
+    
+    {% if start_page > 1 %}
+    <a href="{{ url_for('main.articles', page=1, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">1</a>
+    {% if start_page > 2 %}<span class="page-ellipsis">...</span>{% endif %}
+    {% endif %}
+    
+    {% for p in range(start_page, end_page + 1) %}
+        {% if p == pagination.page %}
+        <span class="page-link active">{{ p }}</span>
+        {% else %}
+        <a href="{{ url_for('main.articles', page=p, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">{{ p }}</a>
+        {% endif %}
+    {% endfor %}
+    
+    {% if end_page < pagination.pages %}
+    {% if end_page < pagination.pages - 1 %}<span class="page-ellipsis">...</span>{% endif %}
+    <a href="{{ url_for('main.articles', page=pagination.pages, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">{{ pagination.pages }}</a>
+    {% endif %}
+    
+    {% if pagination.has_next %}
+    <a href="{{ url_for('main.articles', page=pagination.next_num, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">下一页</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if pagination.total > 0 %}
+<div class="pagination-info">
+    共 {{ pagination.total }} 条记录，第 {{ pagination.page }}/{{ pagination.pages }} 页
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.articles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.article-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.article-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.article-card.favorite {
+    border-left: 4px solid #ffc107;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.header-badges {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.category-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+.category-badge.wechat-badge {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.favorite-badge {
+    color: #ffc107;
+    font-size: 18px;
+}
+
+.important-badge {
+    background: #dc3545;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.article-card h3 {
+    margin: 10px 0;
+    font-size: 18px;
+    line-height: 1.4;
+}
+
+.article-card h3 a {
+    color: #333;
+    text-decoration: none;
+}
+
+.article-card h3 a:hover {
+    color: #007bff;
+}
+
+.article-meta {
+    color: #666;
+    font-size: 13px;
+    margin-bottom: 10px;
+    display: flex;
+    gap: 15px;
+}
+
+.article-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.article-summary {
+    color: #555;
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 15px;
+}
+
+.card-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* 筛选栏样式 */
+.filter-bar {
+    background: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-end;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filter-group label {
+    color: #666;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.filter-group select,
+.filter-group input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.filter-group select:focus,
+.filter-group input:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.search-group {
+    flex: 1;
+    min-width: 300px;
+}
+
+.search-group input {
+    flex: 1;
+    min-width: 150px;
+}
+
+.source-stats {
+    display: flex;
+    gap: 15px;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+}
+
+.stat-item {
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: #f5f5f5;
+}
+
+/* 分页样式 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    margin: 30px 0 10px;
+    flex-wrap: wrap;
+}
+
+.pagination a,
+.pagination span {
+    padding: 8px 14px;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.pagination a {
+    background: #f5f5f5;
+    color: #333;
+    border: 1px solid #ddd;
+}
+
+.pagination a:hover {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.pagination .page-link.active {
+    background: #007bff;
+    color: white;
+    border: 1px solid #007bff;
+    cursor: default;
+}
+
+.page-ellipsis {
+    padding: 8px;
+    color: #999;
+}
+
+.pagination-info {
+    text-align: center;
+    color: #999;
+    font-size: 13px;
+    margin-bottom: 20px;
+}
+
+.empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    background: white;
+    border-radius: 8px;
+}
+
+.empty-state .hint {
+    color: #999;
+    font-size: 14px;
+    margin: 10px 0;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function toggleFavorite(id) {
+    try {
+        const response = await fetch(`/api/articles/${id}/favorite`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        if (result.code === 0) {
+            location.reload();
+        }
+    } catch (error) {
+        alert('请求失败: ' + error.message);
+    }
+}
+
+async function deleteArticle(id) {
+    if (!confirm('确定要删除这篇文章吗？')) return;
+    
+    try {
+        const response = await fetch(`/api/articles/${id}`, {
+            method: 'DELETE'
+        });
+        const result = await response.json();
+        if (result.code === 0) {
+            location.reload();
+        } else {
+            alert(result.message || '删除失败');
+        }
+    } catch (error) {
+        alert('请求失败: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

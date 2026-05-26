@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}{{ content.title[:30] }}... - 雷递网{% endblock %}
+
+{% block content %}
+<div class="article-detail-container">
+    <div class="article-detail">
+        <div class="article-header">
+            <span class="category-badge">{{ content.category or '资讯' }}</span>
+            <h1>{{ content.title }}</h1>
+            <div class="article-meta">
+                <span class="meta-item">
+                    <i class="icon-user"></i>
+                    {{ content.author or '雷递网' }}
+                </span>
+                <span class="meta-item">
+                    <i class="icon-calendar"></i>
+                    {{ content.publish_date|format_date('%Y-%m-%d') if content.publish_date else (content.created_at|format_date('%Y-%m-%d') if content.created_at else '-') }}
+                </span>
+                <span class="meta-item source">
+                    {{ content.source_name or '雷递网' }}
+                </span>
+            </div>
+            {% if content.cover_image %}
+            <div class="article-cover">
+                <img src="{{ content.cover_image }}" alt="{{ content.title }}">
+            </div>
+            {% endif %}
+        </div>
+        
+        {% if content.summary %}
+        <div class="article-summary">
+            <h3>摘要</h3>
+            <p>{{ content.summary }}</p>
+        </div>
+        {% endif %}
+        
+        <div class="article-content">
+            {% if content.content %}
+            {{ content.content|safe }}
+            {% else %}
+            <div class="no-content">
+                <p>暂无详细内容</p>
+                <p>请访问原文链接查看完整内容</p>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="article-actions">
+            <a href="{{ content.url }}" target="_blank" class="btn btn-primary">
+                <i class="icon-external-link"></i> 查看原文
+            </a>
+            <button onclick="toggleFavorite({{ content.id }})" class="btn {% if content.is_favorite %}btn-warning{% else %}btn-default{% endif %}">
+                {{ '取消收藏' if content.is_favorite else '收藏' }}
+            </button>
+            <a href="{{ url_for('main.leidui_news') }}" class="btn btn-default">
+                返回列表
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.article-detail-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.article-detail {
+    background: white;
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.article-header {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.category-badge {
+    display: inline-block;
+    padding: 4px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    margin-bottom: 15px;
+}
+
+.article-header h1 {
+    font-size: 24px;
+    line-height: 1.4;
+    color: #333;
+    margin-bottom: 15px;
+}
+
+.article-meta {
+    display: flex;
+    gap: 20px;
+    color: #888;
+    font-size: 14px;
+    flex-wrap: wrap;
+}
+
+.meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.meta-item.source {
+    color: #667eea;
+    font-weight: 500;
+}
+
+.article-cover {
+    margin-top: 20px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.article-cover img {
+    width: 100%;
+    max-height: 400px;
+    object-fit: cover;
+}
+
+.article-summary {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+}
+
+.article-summary h3 {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.article-summary p {
+    color: #444;
+    line-height: 1.8;
+}
+
+.article-content {
+    font-size: 15px;
+    line-height: 1.9;
+    color: #333;
+}
+
+.article-content p {
+    margin-bottom: 16px;
+}
+
+.article-content img {
+    max-width: 100%;
+    border-radius: 8px;
+    margin: 15px 0;
+}
+
+.no-content {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+}
+
+.article-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+    .article-detail {
+        padding: 20px;
+    }
+    
+    .article-header h1 {
+        font-size: 20px;
+    }
+    
+    .article-meta {
+        flex-direction: column;
+        gap: 8px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function toggleFavorite(newsId) {
+    try {
+        const response = await fetch(`/api/leidui/news/${newsId}/favorite`, {
+            method: 'POST'
+        });
+        const result = await response.json();
+        if (result.code === 0) {
+            location.reload();
+        }
+    } catch (error) {
+        alert('请求失败: ' + error.message);
+    }
+}
+</script>
+{% endblock %}
