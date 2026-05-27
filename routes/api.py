@@ -447,8 +447,8 @@ def crawl_education_news():
         
         # 采集全部来源
         if source == 'all':
-            sources = ['jiemodui', 'duozhi', 'cctv']
-            source_names = {'jiemodui': '芥末堆', 'duozhi': '多知网', 'cctv': '央视网'}
+            sources = ['jiemodui', 'duozhi', 'cctv', 'eol']
+            source_names = {'jiemodui': '芥末堆', 'duozhi': '多知网', 'cctv': '央视网', 'eol': '教育在线'}
             total_saved = 0
             per_source_result = {}
             

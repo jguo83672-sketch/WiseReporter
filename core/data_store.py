@@ -7,7 +7,7 @@ import random
 import threading
 import pytz
 from models import db, AIContent, EducationContent, WechatContent, NewsSource, CrawlLog, LeiduiContent
-from core.scraper import AINewsScraper, EducationNewsScraper, JiemoduiScraper, DuozhiScraper, CctvScraper, AIHotSpider, WechatScraper
+from core.scraper import AINewsScraper, EducationNewsScraper, JiemoduiScraper, DuozhiScraper, CctvScraper, EolScraper, AIHotSpider, WechatScraper
 from core.wechat_scraper import WechatArticleSpider
 from core.cookie_manager import CookieManager
 from core.leidui_scraper import LeinewsSpider
@@ -64,13 +64,17 @@ class ArticleStore:
     @staticmethod
     def save_ai_content(content_data: dict) -> Optional[AIContent]:
         """保存AI资讯"""
-        existing = AIContent.query.filter_by(url=content_data.get('url')).first()
+        url = content_data.get('url', '')
+        if not url:
+            return None
+            
+        existing = AIContent.query.filter_by(url=url).first()
         if existing:
             return existing
         
         ai_content = AIContent(
             title=content_data.get('title', ''),
-            url=content_data.get('url', ''),
+            url=url,
             source=content_data.get('source'),
             summary=content_data.get('summary'),
             content=content_data.get('content'),
@@ -79,9 +83,15 @@ class ArticleStore:
             tags=','.join(content_data.get('tags', [])) if isinstance(content_data.get('tags'), list) else content_data.get('tags')
         )
         
-        db.session.add(ai_content)
-        db.session.commit()
-        return ai_content
+        try:
+            db.session.add(ai_content)
+            db.session.commit()
+            return ai_content
+        except Exception:
+            db.session.rollback()
+            # 冲突时尝试重新查询（竞争条件保护）
+            existing = AIContent.query.filter_by(url=url).first()
+            return existing
     
     @staticmethod
     def get_ai_contents(page: int = 1, per_page: int = 20,
@@ -171,12 +181,17 @@ class ArticleStore:
             is_favorite=is_favorite
         )
         
-        db.session.add(edu_content)
-        db.session.commit()
-        # 自动收藏的文章，后台生成AI摘要（commit前提取原始值，避免ORM对象过期）
-        if is_favorite and edu_content.content:
-            _generate_ai_summary_async(edu_content.id, title, content_data.get('content', ''))
-        return edu_content
+        try:
+            db.session.add(edu_content)
+            db.session.commit()
+            # 自动收藏的文章，后台生成AI摘要（commit前提取原始值，避免ORM对象过期）
+            if is_favorite and edu_content.content:
+                _generate_ai_summary_async(edu_content.id, title, content_data.get('content', ''))
+            return edu_content
+        except Exception:
+            db.session.rollback()
+            existing = EducationContent.query.filter_by(url=content_data.get('url', '')).first()
+            return existing
     
     @staticmethod
     def get_education_contents(page: int = 1, per_page: int = 20,
@@ -279,9 +294,14 @@ class ArticleStore:
             tags=','.join(content_data.get('tags', [])) if isinstance(content_data.get('tags'), list) else content_data.get('tags')
         )
         
-        db.session.add(wechat_content)
-        db.session.commit()
-        return wechat_content
+        try:
+            db.session.add(wechat_content)
+            db.session.commit()
+            return wechat_content
+        except Exception:
+            db.session.rollback()
+            existing = WechatContent.query.filter_by(url=content_data.get('url', '')).first()
+            return existing
     
     @staticmethod
     def get_wechat_contents(page: int = 1, per_page: int = 20,
@@ -389,11 +409,16 @@ class ArticleStore:
             is_favorite=is_edu_related  # 教育公司相关自动收藏
         )
         
-        db.session.add(leidui_content)
-        db.session.commit()
-        if is_edu_related:
-            print(f"[雷递网] 自动收藏教育公司资讯: {title[:50]}")
-        return leidui_content
+        try:
+            db.session.add(leidui_content)
+            db.session.commit()
+            if is_edu_related:
+                print(f"[雷递网] 自动收藏教育公司资讯: {title[:50]}")
+            return leidui_content
+        except Exception:
+            db.session.rollback()
+            existing = LeiduiContent.query.filter_by(url=content_data.get('url', '')).first()
+            return existing
     
     @staticmethod
     def get_leidui_contents(page: int = 1, per_page: int = 20,
@@ -582,6 +607,11 @@ class CrawlManager:
                 scraper = CctvScraper(self.cookie_manager)
                 articles_data = scraper.crawl_articles_in_range(existing_urls=existing_urls)
                 source_name = '央视网'
+            elif source == 'eol':
+                # 使用教育在线专用爬虫
+                scraper = EolScraper(self.cookie_manager)
+                articles_data = scraper.crawl_articles_in_range(existing_urls=existing_urls)
+                source_name = '教育在线'
             else:
                 # 其他数据源使用原有的爬虫
                 scraper = EducationNewsScraper(source, self.cookie_manager)
@@ -617,9 +647,9 @@ class CrawlManager:
         results = []
         total_saved = 0
         
-        for source in ['jiemodui', 'duozhi', 'cctv']:
+        for source in ['jiemodui', 'duozhi', 'cctv', 'eol']:
             result = self.crawl_education_news(source)
-            source_names = {'jiemodui': '芥末堆', 'duozhi': '多知网', 'cctv': '央视网'}
+            source_names = {'jiemodui': '芥末堆', 'duozhi': '多知网', 'cctv': '央视网', 'eol': '教育在线'}
             results.append({
                 'source': source,
                 'source_name': source_names.get(source, source),

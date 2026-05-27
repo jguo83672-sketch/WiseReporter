@@ -112,6 +112,9 @@ venv.bak/
 # Uploads
 uploads/
 
+# Node
+node_modules/
+
 # Logs
 logs/
 *.log

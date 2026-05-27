@@ -218,6 +218,7 @@ def crawl_ai_news_task(task_id=None):
         except Exception as e:
             logger.error(f"AI资讯采集失败: {str(e)}")
             if task:
+                db.session.rollback()
                 task.last_run = datetime.now(BEIJING_TZ)
                 task.last_status = 'failed'
                 task.last_message = str(e)
@@ -254,6 +255,7 @@ def crawl_education_news_task(task_id=None):
         except Exception as e:
             logger.error(f"教育资讯采集失败: {str(e)}")
             if task:
+                db.session.rollback()
                 task.last_run = datetime.now(BEIJING_TZ)
                 task.last_status = 'failed'
                 task.last_message = str(e)
@@ -290,6 +292,7 @@ def crawl_leidui_news_task(task_id=None):
         except Exception as e:
             logger.error(f"雷递网资讯采集失败: {str(e)}")
             if task:
+                db.session.rollback()
                 task.last_run = datetime.now(BEIJING_TZ)
                 task.last_status = 'failed'
                 task.last_message = str(e)

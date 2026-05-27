@@ -6,11 +6,32 @@
 <div class="page-header">
     <h1>教育资讯</h1>
     <div class="header-actions">
-        <button onclick="crawlEducationNews()" class="btn btn-primary">采集芥末堆</button>
-        <button onclick="crawlEducationNews('duozhi')" class="btn btn-secondary">采集多知网</button>
-        <button onclick="crawlEducationNews('cctv')" class="btn btn-info">采集央视网</button>
-        <button onclick="crawlAllEducationNews()" class="btn btn-success">采集全部</button>
+        <select id="crawlSource" class="crawl-source-select">
+            <option value="all">全部来源</option>
+            <option value="jiemodui">芥末堆</option>
+            <option value="duozhi">多知网</option>
+            <option value="cctv">央视网</option>
+            <option value="eol">教育在线</option>
+        </select>
+        <button onclick="doCrawl()" class="btn btn-primary btn-crawl-trigger">手动采集</button>
     </div>
+</div>
+
+<!-- 采集进度遮罩 -->
+<div id="crawlOverlay" class="crawl-overlay" style="display:none;">
+    <div class="crawl-loading-box">
+        <div class="crawl-spinner"></div>
+        <p id="crawlStatus" class="crawl-status">正在采集中，请稍候...</p>
+        <div class="crawl-progress-bar">
+            <div id="crawlProgress" class="crawl-progress-fill"></div>
+        </div>
+        <p id="crawlDetail" class="crawl-detail"></p>
+    </div>
+</div>
+
+<!-- Toast 通知 -->
+<div id="toast" class="toast-notification" style="display:none;">
+    <span id="toastMsg"></span>
 </div>
 
 <div class="filter-bar">
@@ -23,6 +44,7 @@
                     <option value="jiemodui" {% if current_source == 'jiemodui' %}selected{% endif %}>芥末堆</option>
                     <option value="duozhi" {% if current_source == 'duozhi' %}selected{% endif %}>多知网</option>
                     <option value="cctv" {% if current_source == 'cctv' %}selected{% endif %}>央视网</option>
+                    <option value="eol" {% if current_source == 'eol' %}selected{% endif %}>教育在线</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -106,7 +128,16 @@
         {% if keyword %}
         <p class="hint">没有找到包含"{{ keyword }}"的相关内容</p>
         {% endif %}
-        <button onclick="crawlAllEducationNews()" class="btn btn-primary">立即采集</button>
+        <div class="empty-actions">
+            <select id="crawlSourceEmpty" class="crawl-source-select">
+                <option value="all">全部</option>
+                <option value="jiemodui">芥末堆</option>
+                <option value="duozhi">多知网</option>
+                <option value="cctv">央视网</option>
+                <option value="eol">教育在线</option>
+            </select>
+            <button onclick="doCrawl('crawlSourceEmpty')" class="btn btn-primary">立即采集</button>
+        </div>
     </div>
     {% endfor %}
 </div>
@@ -229,6 +260,11 @@
     color: #c62828;
 }
 
+.source-badge.eol {
+    background: #e0f7fa;
+    color: #00838f;
+}
+
 .favorite-badge {
     color: #ffc107;
     font-size: 18px;
@@ -296,6 +332,21 @@
     gap: 10px;
     flex-wrap: wrap;
     align-items: center;
+}
+
+.crawl-source-select {
+    padding: 10px 16px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    background: #fff;
+    cursor: pointer;
+    min-width: 120px;
+}
+
+.crawl-source-select:focus {
+    outline: none;
+    border-color: #007bff;
 }
 
 /* 筛选栏样式 */
@@ -368,6 +419,7 @@
 .stat-item.jiemodui { color: #1565c0; background: #e3f2fd; }
 .stat-item.duozhi { color: #7b1fa2; background: #f3e5f5; }
 .stat-item.cctv { color: #c62828; background: #ffebee; }
+.stat-item.eol { color: #00838f; background: #e0f7fa; }
 
 /* 分页样式优化 */
 .pagination {
@@ -430,44 +482,209 @@
     font-size: 14px;
     margin: 10px 0;
 }
+
+.empty-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.btn-cyan {
+    background: #00838f;
+    color: #fff;
+}
+.btn-cyan:hover {
+    background: #006064;
+}
+
+/* 采集进度遮罩 */
+.crawl-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.crawl-loading-box {
+    background: #fff;
+    border-radius: 12px;
+    padding: 40px 50px;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    min-width: 360px;
+}
+
+.crawl-spinner {
+    width: 48px; height: 48px;
+    border: 4px solid #e0e0e0;
+    border-top-color: #007bff;
+    border-radius: 50%;
+    animation: crawlSpin 0.8s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes crawlSpin {
+    to { transform: rotate(360deg); }
+}
+
+.crawl-status {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin: 0 0 16px;
+}
+
+.crawl-progress-bar {
+    width: 100%;
+    height: 6px;
+    background: #eee;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.crawl-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #007bff, #00c6ff);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.crawl-detail {
+    font-size: 13px;
+    color: #999;
+    margin: 0;
+}
+
+/* Toast 通知 */
+.toast-notification {
+    display: none;
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    padding: 14px 28px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    animation: toastIn 0.3s ease;
+    max-width: 600px;
+    white-space: pre-line;
+    line-height: 1.6;
+}
+
+.toast-success {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #a5d6a7;
+}
+
+.toast-error {
+    background: #ffebee;
+    color: #c62828;
+    border: 1px solid #ef9a9a;
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 </style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-async function crawlEducationNews(source) {
-    const sourceNames = { 'duozhi': '多知网', 'cctv': '央视网' };
-    const sourceName = sourceNames[source] || '芥末堆';
-    if (!confirm(`确定要采集${sourceName}吗？`)) return;
-    
+const sourceNames = { 'jiemodui': '芥末堆', 'duozhi': '多知网', 'cctv': '央视网', 'eol': '教育在线', 'all': '全部来源' };
+
+var _crawlProgressTimer = null;
+
+function showOverlay(source) {
+    var overlay = document.getElementById('crawlOverlay');
+    var progress = document.getElementById('crawlProgress');
+    var status = document.getElementById('crawlStatus');
+    var detail = document.getElementById('crawlDetail');
+
+    if (source === 'all') {
+        status.textContent = '正在采集全部来源...';
+        detail.textContent = '芥末堆 → 多知网 → 央视网 → 教育在线';
+    } else {
+        var name = sourceNames[source] || source;
+        status.textContent = '正在采集' + name + '...';
+        detail.textContent = '正在抓取文章列表并获取详情，请耐心等待';
+    }
+
+    progress.style.width = '0%';
+    overlay.style.display = 'flex';
+
+    // 模拟进度（因为后端同步采集，无法获取真实进度）
+    var pct = 0;
+    _crawlProgressTimer = setInterval(function() {
+        pct += Math.random() * 12;
+        if (pct > 88) pct = 88;
+        progress.style.width = pct + '%';
+    }, 600);
+}
+
+function hideOverlay() {
+    if (_crawlProgressTimer) { clearInterval(_crawlProgressTimer); _crawlProgressTimer = null; }
+    document.getElementById('crawlProgress').style.width = '100%';
+    setTimeout(function() {
+        document.getElementById('crawlOverlay').style.display = 'none';
+    }, 350);
+}
+
+function showToast(msg, isError) {
+    var toast = document.getElementById('toast');
+    var toastMsg = document.getElementById('toastMsg');
+    toast.className = 'toast-notification' + (isError ? ' toast-error' : ' toast-success');
+    toastMsg.textContent = msg;
+    toast.style.display = 'block';
+    setTimeout(function() { toast.style.display = 'none'; }, 4000);
+}
+
+function setCrawlBtns(disabled) {
+    var btns = document.querySelectorAll('.header-actions button, .empty-actions button');
+    for (var i = 0; i < btns.length; i++) { btns[i].disabled = disabled; }
+}
+
+async function doCrawl(selectId) {
+    selectId = selectId || 'crawlSource';
+    var source = document.getElementById(selectId).value;
+    var sourceName = sourceNames[source] || source;
+    if (!confirm('确定要采集"' + sourceName + '"的资讯吗？')) return;
+
+    showOverlay(source);
+    setCrawlBtns(true);
+
     try {
-        const response = await fetch('/api/education/crawl', {
+        var response = await fetch('/api/education/crawl', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ source: source })
         });
-        const result = await response.json();
-        alert(result.data.message);
-        location.reload();
-    } catch (error) {
-        alert('请求失败: ' + error.message);
-    }
-}
+        var result = await response.json();
+        hideOverlay();
+        setCrawlBtns(false);
 
-async function crawlAllEducationNews() {
-    if (!confirm('确定要采集所有教育资讯吗？')) return;
-    
-    try {
-        const response = await fetch('/api/education/crawl', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source: 'all' })
-        });
-        const result = await response.json();
-        alert(result.data.message);
-        location.reload();
+        if (result.code === 0) {
+            showToast(result.data.message || '采集完成');
+            setTimeout(function() { location.reload(); }, 1500);
+        } else {
+            showToast('采集失败: ' + (result.message || '未知错误'), true);
+        }
     } catch (error) {
-        alert('请求失败: ' + error.message);
+        hideOverlay();
+        setCrawlBtns(false);
+        showToast('请求失败: ' + error.message, true);
     }
 }
 

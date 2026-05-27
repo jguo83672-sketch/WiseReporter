@@ -1711,6 +1711,464 @@ class CctvScraper(BaseScraper):
         return self.crawl_articles_in_range()
 
 
+class EolScraper(BaseScraper):
+    """教育在线教育新闻爬虫（eol.cn）
+    
+    列表页: https://news.eol.cn/yaowen/
+    文章URL格式: https://news.eol.cn/yaowen/202605/t20260527_2738017.shtml
+    
+    策略：从列表页HTML卡片中提取文章URL和基本信息，然后逐篇爬取详情
+    """
+    
+    BASE_URL = 'https://news.eol.cn'
+    LIST_URL = 'https://news.eol.cn/yaowen/'
+    SOURCE_NAME = 'eol'
+    SOURCE_DISPLAY_NAME = '教育在线'
+    
+    DEFAULT_DAYS = 30
+    
+    def __init__(self, cookie_manager: CookieManager = None, days: int = None, max_articles: int = 15):
+        super().__init__(cookie_manager)
+        self.source = self.SOURCE_NAME
+        self.source_name = self.SOURCE_DISPLAY_NAME
+        self.days = days or self.DEFAULT_DAYS
+        self.max_articles = max_articles
+    
+    def _get_progress(self) -> tuple:
+        """获取爬取进度"""
+        from models import CrawlProgress
+        progress = CrawlProgress.query.filter_by(source=self.SOURCE_NAME).first()
+        if progress:
+            return progress.last_article_id, progress.last_article_date, progress.last_crawl_date
+        return None, None, None
+    
+    def _save_progress(self, last_date: str):
+        """保存爬取进度"""
+        from models import CrawlProgress, db
+        today = datetime.now().strftime('%Y%m%d')
+        
+        progress = CrawlProgress.query.filter_by(source=self.SOURCE_NAME).first()
+        if progress:
+            progress.last_article_date = last_date
+            progress.last_crawl_date = today
+        else:
+            progress = CrawlProgress(
+                source=self.SOURCE_NAME,
+                last_article_id=0,
+                last_article_date=last_date,
+                last_crawl_date=today
+            )
+            db.session.add(progress)
+        db.session.commit()
+    
+    def _eol_request(self, url: str) -> Optional[str]:
+        """教育在线专用请求方法"""
+        import requests
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Connection': 'keep-alive',
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                # 自动检测编码
+                if response.apparent_encoding:
+                    response.encoding = response.apparent_encoding
+                return response.text
+        except Exception as e:
+            print(f"[教育在线] 请求失败: {e}")
+        return None
+    
+    def _resolve_url(self, href: str, base_url: str) -> str:
+        """解析相对URL为绝对URL"""
+        from urllib.parse import urljoin, urlparse
+        if href.startswith('./'):
+            href = href[1:]  # 去掉开头的 .
+        if href.startswith('http'):
+            return href.split('?')[0]
+        # 相对路径拼接
+        return urljoin(base_url, href).split('?')[0]
+    
+    def parse_article_list(self, html: str) -> List[Dict]:
+        """解析教育在线新闻列表页
+        
+        HTML结构：
+        <div class="neirong">
+            <div class="biaoti">
+                <div class="jian">荐</div>
+                <div class="title">
+                    <a href="./yaowen/202605/t20260527_2738017.shtml">标题</a>
+                </div>
+            </div>
+            <div class="xiangguan">
+                <div class="laiyuan">来源名</div>
+                <div class="time">2026-05-27 08:49</div>
+            </div>
+        </div>
+        """
+        import re
+        articles = []
+        seen_urls = set()
+        
+        soup = BeautifulSoup(html, 'lxml')
+        
+        # 查找所有 neirong 卡片
+        neirong_cards = soup.select('.neirong')
+        if not neirong_cards:
+            neirong_cards = soup.select('[class*="neirong"]')
+        
+        print(f"[教育在线] 列表页找到 {len(neirong_cards)} 个卡片")
+        
+        for card in neirong_cards:
+            try:
+                # 提取标题和链接
+                title_elem = card.select_one('.biaoti .title a, .title a')
+                if not title_elem:
+                    continue
+                
+                title = title_elem.get_text(strip=True)
+                href = title_elem.get('href', '')
+                if not href or not title:
+                    continue
+                
+                # 解析URL
+                url = self._resolve_url(href, self.LIST_URL)
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                
+                # 提取来源
+                source_elem = card.select_one('.laiyuan')
+                source = source_elem.get_text(strip=True) if source_elem else ''
+                
+                # 提取时间
+                time_elem = card.select_one('.time')
+                time_str = time_elem.get_text(strip=True) if time_elem else ''
+                publish_date_str = self._parse_date_str(time_str)
+                
+                articles.append({
+                    'title': title,
+                    'url': url,
+                    'publish_date_str': publish_date_str,
+                    'tags': '',
+                    'source': self.source,
+                    'source_name': source or self.source_name
+                })
+            except Exception as e:
+                continue
+        
+        print(f"[教育在线] 列表解析到 {len(articles)} 篇文章")
+        return articles
+    
+    def _parse_date_str(self, date_text: str) -> Optional[str]:
+        """解析日期文本"""
+        if not date_text:
+            return None
+        import re
+        # 匹配 YYYY-MM-DD HH:MM 或 YYYY-MM-DD
+        match = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})', date_text)
+        if match:
+            return f"{match.group(1)}-{match.group(2).zfill(2)}-{match.group(3).zfill(2)}"
+        return date_text.strip()
+    
+    def parse_article_detail(self, url: str) -> Optional[Dict]:
+        """解析教育在线文章详情页"""
+        html_text = self._eol_request(url)
+        if not html_text:
+            return None
+        
+        import re
+        soup = BeautifulSoup(html_text, 'lxml')
+        
+        # 移除脚本和样式
+        for tag in soup(['script', 'style']):
+            tag.decompose()
+        
+        # === 提取标题 ===
+        title = ''
+        # 尝试多种选择器
+        for selector in ['h1', '.title h1', '.biaoti h1', '.article-title', 
+                         '.neirong .title', '[class*="title"] h1', '.trs_editor_view h1']:
+            title_elem = soup.select_one(selector)
+            if title_elem:
+                title = title_elem.get_text(strip=True)
+                if title and len(title) > 5:
+                    break
+        
+        # 如果h1没有，尝试从页面title提取
+        if not title or len(title) < 5:
+            page_title = soup.select_one('title')
+            if page_title:
+                title_text = page_title.get_text(strip=True)
+                # 常见格式: "文章标题 - 教育在线" 或 "文章标题_教育在线"
+                for sep in [' - ', '_', ' | ', '—']:
+                    if sep in title_text:
+                        title = title_text.split(sep)[0].strip()
+                        break
+                if not title:
+                    title = title_text
+        
+        # === 提取来源和日期 ===
+        author = ''
+        date_str = ''
+        source_name = ''
+        
+        # 尝试从 meta 标签提取
+        for meta_name in ['author', 'source', 'weibo:article:create_at']:
+            meta = soup.select_one(f'meta[name="{meta_name}"], meta[property="{meta_name}"]')
+            if meta:
+                content = meta.get('content', '')
+                if meta_name == 'author':
+                    author = content
+                elif 'create_at' in meta_name:
+                    date_str = content
+        
+        # 从日期/来源区域提取
+        info_selectors = [
+            '.xiangguan', '.info', '.article-info', '.source-time',
+            '.laiyuan', '[class*="info"]', '[class*="source"]',
+            '.article-source', '.time-source'
+        ]
+        info_text = ''
+        for sel in info_selectors:
+            info_elem = soup.select_one(sel)
+            if info_elem:
+                info_text = info_elem.get_text(strip=True)
+                break
+        
+        if info_text:
+            # 提取来源
+            source_match = re.search(r'来源[：:]\s*([^\s|]+)', info_text)
+            if source_match:
+                source_name = source_match.group(1).strip()
+            
+            # 提取时间
+            time_match = re.search(r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s*(\d{1,2})[:：](\d{1,2})', info_text)
+            if time_match:
+                y, m, d, h, mi = time_match.groups()
+                date_str = f"{y}-{m.zfill(2)}-{d.zfill(2)} {h.zfill(2)}:{mi.zfill(2)}:00"
+            else:
+                time_match = re.search(r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', info_text)
+                if time_match:
+                    y, m, d = time_match.groups()
+                    date_str = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+        
+        # 从URL提取日期（兜底）
+        if not date_str:
+            url_date = re.search(r'/(\d{4})(\d{2})/', url)
+            if url_date:
+                date_str = f"{url_date.group(1)}-{url_date.group(2)}"
+        
+        # === 提取正文 ===
+        content = ''
+        content_selectors = [
+            '.trs_editor_view', '#content', '.content', '.article-content',
+            '.neirong', '#text', '.text', '.article-body',
+            '[class*="content"]', '[class*="article"]'
+        ]
+        
+        for sel in content_selectors:
+            content_elem = soup.select_one(sel)
+            if content_elem:
+                # 移除内部不需要的元素
+                for bad in content_elem.select('.sharebox, .fenxiang, .social-share, script, style'):
+                    bad.decompose()
+                
+                paragraphs = []
+                for p in content_elem.find_all(['p', 'h2', 'h3', 'h4', 'div']):
+                    text = p.get_text(strip=True)
+                    # 过滤太短的、明显不是正文的
+                    if text and len(text) > 5:
+                        # 过滤分享/版权等文案
+                        skip_patterns = ['扫码', '扫一扫', '分享到', '微信', '版权声明',
+                                       '转载', '原文链接', '阅读原文', '点击上方']
+                        if not any(kw in text for kw in skip_patterns):
+                            paragraphs.append(text)
+                
+                if paragraphs:
+                    content = '\n\n'.join(paragraphs)
+                    break
+        
+        # 如果内容以脚本变量形式存在
+        if not content:
+            var_match = re.search(r"var\s+content\s*=\s*['\"](.+?)['\"]", html_text, re.DOTALL)
+            if var_match:
+                from html import unescape
+                content = unescape(var_match.group(1))
+                content_soup = BeautifulSoup(content, 'lxml')
+                content = content_soup.get_text(separator='\n', strip=True)
+        
+        publish_date = self._parse_date(date_str) if date_str else None
+        
+        return {
+            'title': title,
+            'author': author or source_name,
+            'content': content,
+            'url': url,
+            'publish_date': publish_date,
+            'publish_date_str': date_str,
+            'source': self.source,
+            'source_name': self.source_name
+        }
+    
+    def _parse_date(self, date_str: str) -> Optional[datetime]:
+        """解析日期字符串"""
+        if not date_str:
+            return None
+        try:
+            date_str = date_str.strip()
+            formats = ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d',
+                       '%Y年%m月%d日', '%Y年%m月%d日 %H:%M']
+            for fmt in formats:
+                try:
+                    return datetime.strptime(date_str, fmt)
+                except ValueError:
+                    continue
+        except Exception:
+            pass
+        return None
+    
+    def _get_page_urls(self) -> List[str]:
+        """获取所有列表页URL（带分页）"""
+        urls = [self.LIST_URL]
+        
+        try:
+            response_text = self._eol_request(self.LIST_URL)
+            if not response_text:
+                return urls
+            
+            import re
+            soup = BeautifulSoup(response_text, 'lxml')
+            
+            # 查找分页链接
+            page_links = soup.select('.page a, .pagination a, .paging a, [class*="page"] a')
+            for link in page_links:
+                href = link.get('href', '')
+                if href and 'eol.cn' in href:
+                    clean = self._resolve_url(href, self.LIST_URL)
+                    if clean not in urls:
+                        urls.append(clean)
+                elif href and href.startswith('./'):
+                    # 相对路径分页
+                    clean = self._resolve_url(href, self.LIST_URL)
+                    if clean not in urls:
+                        urls.append(clean)
+            
+            # 也尝试 index_N.shtml 那种分页
+            for i in range(1, 10):
+                page_url = f"{self.LIST_URL.rstrip('/')}/index_{i}.shtml"
+                if page_url not in urls:
+                    urls.append(page_url)
+        except Exception as e:
+            print(f"[教育在线] 获取分页失败: {e}")
+        
+        return urls
+    
+    def crawl_articles_in_range(self, existing_urls: set = None, max_articles: int = None) -> List[Dict]:
+        """采集教育在线新闻
+        
+        Args:
+            existing_urls: 已存在的URL集合
+            max_articles: 最大采集数量
+        """
+        if existing_urls is None:
+            existing_urls = set()
+        if max_articles is None:
+            max_articles = self.max_articles
+        
+        import re
+        from datetime import datetime as dt, timedelta
+        cutoff_date = dt.now() - timedelta(days=self.days)
+        
+        articles = []
+        skipped_duplicates = 0
+        
+        print(f"[教育在线] 开始采集，最多 {max_articles} 篇，最近 {self.days} 天")
+        
+        # 获取所有分页URL
+        page_urls = self._get_page_urls()
+        print(f"[教育在线] 共发现 {len(page_urls)} 个列表页")
+        
+        for page_url in page_urls:
+            if len(articles) >= max_articles:
+                break
+            
+            print(f"[教育在线] 解析列表页: {page_url}")
+            
+            try:
+                html_text = self._eol_request(page_url)
+                if not html_text:
+                    continue
+                
+                list_articles = self.parse_article_list(html_text)
+                page_count = 0
+                
+                for article_data in list_articles:
+                    if len(articles) >= max_articles:
+                        break
+                    
+                    url = article_data.get('url', '')
+                    if not url:
+                        continue
+                    
+                    # 跳过已存在的
+                    if url in existing_urls:
+                        skipped_duplicates += 1
+                        continue
+                    
+                    # 日期过滤
+                    publish_date_str = article_data.get('publish_date_str')
+                    if publish_date_str:
+                        try:
+                            article_date = dt.strptime(publish_date_str, '%Y-%m-%d')
+                            if article_date < cutoff_date:
+                                print(f"[教育在线] 文章日期 {publish_date_str} 早于截止日期，跳过")
+                                continue
+                        except:
+                            pass
+                    
+                    print(f"[教育在线] 详情页: {article_data.get('title', '')[:40]}...")
+                    
+                    # 爬取详情
+                    article_detail = self.parse_article_detail(url)
+                    
+                    if article_detail and article_detail.get('title'):
+                        content = article_detail.get('content', '')
+                        if content and len(content) > 50:
+                            articles.append(article_detail)
+                            existing_urls.add(url)
+                            page_count += 1
+                            print(f"[教育在线] ✓ 采集成功: {article_detail.get('title')[:40]}...")
+                        else:
+                            print(f"[教育在线] 正文内容不足，仍保存基本信息")
+                            # 即使没有正文也保存基本信息（标题+URL）
+                            articles.append(article_data)
+                            existing_urls.add(url)
+                            page_count += 1
+                    else:
+                        print(f"[教育在线] 详情解析失败，跳过")
+                    
+                    time.sleep(random.uniform(1, 2))
+                
+                print(f"[教育在线] 页面完成: 采集{page_count}篇")
+                time.sleep(random.uniform(1, 2))
+                
+            except Exception as e:
+                print(f"[教育在线] 列表页 {page_url} 出错: {e}")
+                continue
+        
+        print(f"\n[教育在线] 采集完成，共采集 {len(articles)} 篇文章（跳过 {skipped_duplicates} 篇重复）")
+        return articles
+    
+    def crawl(self, url: str = None) -> List[Dict]:
+        """执行爬取"""
+        return self.crawl_articles_in_range()
+
+
 class EducationNewsScraper(BaseScraper):
     """教育资讯爬虫（支持多数据源）"""
     

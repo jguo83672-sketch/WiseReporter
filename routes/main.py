@@ -35,9 +35,14 @@ def index():
     week_education_news = EducationContent.query.filter(EducationContent.created_at >= week_ago).count()
     week_leidui_news = LeiduiContent.query.filter(LeiduiContent.created_at >= week_ago).count()
     
-    # 最近的重要文章
-    important_articles = Article.query.filter_by(is_important=True).order_by(
-        Article.created_at.desc()
+    # 最近收藏的教育资讯（前5条）
+    favorite_education = EducationContent.query.filter_by(is_favorite=True).order_by(
+        EducationContent.created_at.desc()
+    ).limit(5).all()
+    
+    # 最近的雷递网投融资/财报资讯（前5条）
+    recent_leidui_news = LeiduiContent.query.order_by(
+        LeiduiContent.created_at.desc()
     ).limit(5).all()
     
     # 最近的AI资讯
@@ -67,7 +72,8 @@ def index():
                          week_ai_news=week_ai_news,
                          week_education_news=week_education_news,
                          week_leidui_news=week_leidui_news,
-                         important_articles=important_articles,
+                         favorite_education=favorite_education,
+                         recent_leidui_news=recent_leidui_news,
                          recent_ai_news=recent_ai_news,
                          recent_logs=recent_logs,
                          latest_report=latest_report)

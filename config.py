@@ -1,5 +1,9 @@
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+
+# 加载 .env 文件中的环境变量
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'wise-reporter-secret-key-2024'
