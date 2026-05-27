@@ -212,6 +212,7 @@ class EducationContent(db.Model):
     tags = db.Column(db.String(500))
     is_read = db.Column(db.Boolean, default=False)  # 是否已读
     is_favorite = db.Column(db.Boolean, default=False)  # 是否收藏
+    ai_summary = db.Column(db.Text)  # AI生成的摘要
     created_at = db.Column(db.DateTime, default=now_beijing)
     
     def __repr__(self):
@@ -225,6 +226,7 @@ class EducationContent(db.Model):
             'source': self.source,
             'source_name': self.source_name,
             'summary': self.summary,
+            'ai_summary': self.ai_summary,
             'publish_date': self.publish_date.strftime('%Y-%m-%d') if self.publish_date else None,
             'publish_date_str': self.publish_date_str,
             'category': self.category,

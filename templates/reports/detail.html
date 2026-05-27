@@ -229,6 +229,84 @@ document.addEventListener('click', function(e) {
     opacity: 0.65;
 }
 
+/* --- Hero 摘要 --- */
+.wr-hero-summary {
+    text-align: left;
+    background: rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 0 auto 20px;
+    max-width: 700px;
+    border-left: 3px solid rgba(255,255,255,0.5);
+}
+.wr-summary-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    opacity: 0.9;
+}
+.wr-summary-text {
+    font-size: 14px;
+    line-height: 1.9;
+    opacity: 0.92;
+    text-align: justify;
+}
+
+/* --- Hero 重点关注 --- */
+.wr-hero-highlights {
+    text-align: left;
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 18px 24px;
+    margin: 0 auto 20px;
+    max-width: 700px;
+}
+.wr-highlights-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    opacity: 0.9;
+}
+.wr-highlights-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.wr-highlights-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 13px;
+    line-height: 1.6;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.wr-highlights-list li:last-child {
+    border-bottom: none;
+}
+.wr-highlights-list li a {
+    color: #fff;
+    text-decoration: none;
+    flex: 1;
+    opacity: 0.9;
+    transition: opacity 0.2s;
+}
+.wr-highlights-list li a:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+.wr-highlight-source {
+    display: inline-block;
+    padding: 1px 8px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 /* --- 板块 Section --- */
 .wr-section {
     margin-bottom: 36px;
@@ -331,6 +409,16 @@ document.addEventListener('click', function(e) {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+.wr-card-ai-summary {
+    font-size: 13px;
+    color: #333;
+    line-height: 1.7;
+    background: #f0f8ff;
+    border-left: 3px solid #1a73e8;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin-bottom: 8px;
 }
 .wr-card-right {
     display: flex;

@@ -11,33 +11,163 @@ from models import db, Article, AIContent, EducationContent, LeiduiContent, Week
 BEIJING_TZ = pytz.timezone('Asia/Shanghai')
 
 
-# 教育公司名称列表（用于投融资/财报筛选）
+# 全球知名教育公司名称列表（约100家，用于投融资/财报筛选）
+# 数据来源：CompaniesMarketCap上市教育公司排名、TIME 2025 EdTech 榜单、HolonIQ独角兽榜单
 EDUCATION_COMPANIES = [
-    # 英文公司
-    'Pearson', '皮尔逊', 'McGraw Hill', '麦格劳-希尔', 'Cengage', 'Coursera', 'Udemy',
-    'Duolingo', '2U', 'Udacity', 'Khan Academy', '可汗学院', 'Quizlet', 'Chegg',
-    'Blackboard', 'Instructure', 'Canvas', 'Pluralsight', 'Skillsoft', 'Docebo', 'D2L',
-    'Kaplan', '卡普兰', 'Princeton Review', '普林斯顿评论', 'Apollo Education Group',
-    'Covista', 'Adtalem', 'Grand Canyon Education', 'Stride', 'K12 Inc', 'MagicSchool AI',
-    'Turnitin', 'College Board', 'ACT', 'Houghton Mifflin Harcourt', 'Nelnet', 'Remind',
-    'Outschool', 'OpenText', 'ApplyBoard', 'Pearson Vue', 'Cambridge Assessment',
-    'Oxford University Press', '牛津大学出版社', 'Cambridge University Press', '剑桥大学出版社',
-    'FutureLearn', 'Pearson Education', 'Languagenut', 'Reed Elsevier', 'Pearson English',
-    'Georg Von Holtzbrinck', 'Springer Nature', 'Bettermarks', 'Babbel', 'Deutsche Telekom Education',
-    'Kahoot', '挪威', 'EF Education First', '瑞士', 'Rosetta Stone', '卢森堡',
-    'Efekta Education', '瑞典', 'Lingopie', '西班牙', 'Busuu', 'Lingoda', 'Preply',
-    'iTalki', 'Studocu', '荷兰',
-    # 中文公司
-    '新东方', '好未来', '学而思', '网易有道', '编程猫', '猿辅导', '作业帮', '高途',
-    'VIPKID', '51Talk', '中公教育', '粉笔', '华图教育', '科大讯飞', '小盒科技',
-    '美术宝', '爱学习', '阿卡索', '伴鱼', '学堂在线', '尚德机构',
-    # 国外教育公司中文名
-    'BYJU', 'Unacademy', 'PhysicsWallah', 'upGrad', 'Simplilearn',
-    'Benesse Holdings', 'Sega Sammy Holdings', 'YBM Sisa', 'Cermati', 'Edukasyon',
-    'Navitas', 'IDP Education', 'Open Universities Australia', 'StudyGroup',
-    'Laureate Education', 'Sylvan Learning', 'Kumon', '公文式', 'Mathnasium',
-    'TAL Education', 'iTutorGroup'
+    # ===== 全球上市教育公司（按营收/市值排名） =====
+    'Pearson', '培生', '皮尔逊',
+    'New Oriental', '新东方',
+    'Bright Horizons',
+    'TAL Education', '好未来', '学而思',
+    'KinderCare Learning Companies', 'KinderCare',
+    'Stride', 'K12 Inc',
+    'Vtech', '伟易达',
+    'Adtalem', 'Adtalem Global Education',
+    'Laureate Education',
+    'John Wiley & Sons', 'Wiley',
+    'Scholastic',
+    'Barnes & Noble Education',
+    'Strategic Education',
+    'Grand Canyon Education',
+    'Duolingo', '多邻国',
+    'Phoenix Education Partners',
+    'Universal Technical Institute',
+    'Perdoceo Education',
+    'Gaotu Techedu', '高途',
+    'Udemy',
+    'Coursera',
+    'Afya',
+    'American Public Education',
+    'G8 Education',
+    'IDP Education',
+    'Lincoln Educational Services',
+    'Skillsoft',
+    'Chegg',
+    'Vitru',
+    'Proeduca Altus',
+    'Offcn Education', '中公教育',
+    'Vasta Platform',
+    'Docebo',
+    'D2L',
+    'Nerdy',
+    'iHuman', '洪恩',
+    'Tribal Group',
+    '3P Learning',
+    'Leifras',
+    'Aptech',
+    'ATA Creativity Global',
+    'Kuke Music Holding', '库克音乐',
+    'Genius Group',
+    # ===== 全球知名教育科技独角兽/私有公司 =====
+    'BYJU', 'BYJU\'S',
+    'BetterUp',
+    'Synthesia',
+    'Handshake',
+    'Go1',
+    'Emeritus',
+    'Age of Learning',
+    'upGrad',
+    'Multiverse',
+    'Kajabi',
+    'Degreed',
+    'Guild Education',
+    'Preply',
+    'Speak',
+    'ApplyBoard',
+    'PhysicsWallah',
+    'Unacademy',
+    'Simplilearn',
+    'Vedantu',
+    'Lead School',
+    'MasterClass',
+    'Outschool',
+    'Articulate',
+    'GoStudent',
+    'Domestika',
+    'Newsela',
+    'Course Hero',
+    'ClassDojo',
+    'Quizlet',
+    'Kahoot',
+    'GoGuardian',
+    'Paper',
+    'Udacity',
+    'Pluralsight',
+    'Babbel',
+    'Busuu',
+    'Lingoda',
+    'iTalki',
+    'Cambium Learning',
+    'Renaissance Learning',
+    'PowerSchool',
+    'Discovery Education',
+    'Dreambox Learning',
+    'IXL Learning',
+    'Curriculum Associates', 'i-Ready',
+    'BrainPOP',
+    'Prodigy Education',
+    'Ellucian',
+    'Cengage',
+    'McGraw Hill', '麦格劳-希尔',
+    'Houghton Mifflin Harcourt', 'HMH',
+    'Instructure', 'Canvas',
+    'Turnitin',
+    '2U', 'edX',
+    'Kaplan', '卡普兰',
+    'EF Education First', '英孚教育',
+    'Rosetta Stone',
+    'Khan Academy', '可汗学院',
+    'College Board',
+    'ACT',
+    'Sylvan Learning',
+    'Kumon', '公文式',
+    'Mathnasium',
+    'Navitas',
+    'StudyGroup',
+    'Benesse Holdings',
+    'Springer Nature',
+    'Anthology', 'Blackboard',
+    # ===== 中国教育科技公司 =====
+    '编程猫', 'Codemao',
+    '网易有道', 'Youdao',
+    '猿辅导', '猿力科技', 'Yuanfudao',
+    '作业帮', 'Zuoyebang',
+    'VIPKID',
+    '51Talk', '无忧英语',
+    '火花思维',
+    '小盒科技',
+    '美术宝',
+    '爱学习',
+    '粉笔', 'Fenbi',
+    '华图教育',
+    '科大讯飞', 'iFlytek',
+    '尚德机构', 'Sunlands',
+    '学堂在线',
+    '阿卡索',
+    '伴鱼',
+    '云学堂',
+    'iTutorGroup', '平安好学',
+    '一起教育',
+    '读书郎',
+    '鸿合科技',
+    '视源股份', '希沃',
+    '佳发教育',
+    '全通教育',
+    '立思辰',
+    '中文在线',
+    '传智教育',
 ]
+
+
+def contains_education_company(text: str) -> bool:
+    """检查文本是否包含全球知名教育公司名称（模块级函数，供多处复用）"""
+    if not text:
+        return False
+    text_lower = text.lower()
+    for company in EDUCATION_COMPANIES:
+        if company.lower() in text_lower:
+            return True
+    return False
 
 
 class WeeklyReportGenerator:
@@ -158,13 +288,7 @@ class WeeklyReportGenerator:
     
     def _contains_education_company(self, text: str) -> bool:
         """检查文本是否包含教育公司名称"""
-        if not text:
-            return False
-        text_lower = text.lower()
-        for company in EDUCATION_COMPANIES:
-            if company.lower() in text_lower:
-                return True
-        return False
+        return contains_education_company(text)
     
     def _filter_education_company_articles(self, articles: List[dict]) -> List[dict]:
         """筛选包含教育公司的文章"""
@@ -205,19 +329,160 @@ class WeeklyReportGenerator:
     
     def _collect_edu_news(self, start_date: datetime,
                           end_date: datetime) -> List[EducationContent]:
-        """收集周期内的教育资讯（按发布时间筛选，芥末堆、多知网、央视网）"""
+        """收集周期内的教育资讯（仅收藏的文章，芥末堆、多知网、央视网）"""
         return EducationContent.query.filter(
             EducationContent.publish_date >= start_date,
-            EducationContent.publish_date <= end_date
+            EducationContent.publish_date <= end_date,
+            EducationContent.is_favorite == True
         ).order_by(EducationContent.publish_date.desc()).all()
     
     def _collect_leidui_news(self, start_date: datetime,
                               end_date: datetime) -> List[LeiduiContent]:
-        """收集周期内的雷递网投融资/财报资讯"""
+        """收集周期内已被收藏的雷递网投融资/财报资讯（仅知名教育公司）"""
         return LeiduiContent.query.filter(
             LeiduiContent.publish_date >= start_date,
-            LeiduiContent.publish_date <= end_date
+            LeiduiContent.publish_date <= end_date,
+            LeiduiContent.is_favorite == True
         ).order_by(LeiduiContent.publish_date.desc()).all()
+    
+    def _collect_important_titles(self, articles: List[dict],
+                                   ai_news: List[AIContent],
+                                   edu_news: List[EducationContent],
+                                   leidui_news: List[LeiduiContent]) -> List[dict]:
+        """收集最重要的资讯标题（筛选过的核心内容）"""
+        result = []
+        
+        # 教育资讯：收藏的文章都是重点，全部列出（最多8条）
+        for news in edu_news[:8]:
+            result.append({
+                'title': news.title,
+                'url': news.url or '#',
+                'source': news.source_name or news.source or '教育资讯',
+            })
+        
+        # AI资讯：产品/模型发布（最多5条）
+        for news in ai_news[:5]:
+            result.append({
+                'title': news.title,
+                'url': news.url or '#',
+                'source': 'AI前沿',
+            })
+        
+        # 投融资：教育公司相关（最多5条）
+        filtered_leidui = [n for n in leidui_news 
+                          if self._contains_education_company(n.title or '') 
+                          or self._contains_education_company(n.summary or '')]
+        for news in filtered_leidui[:5]:
+            result.append({
+                'title': news.title,
+                'url': news.url or '#',
+                'source': '投融资',
+            })
+        
+        # 公众号：重点推荐（最多5条）
+        important_articles = [a for a in articles if a.get('is_important')]
+        for article in important_articles[:5]:
+            result.append({
+                'title': article.get('title', ''),
+                'url': article.get('url', '#'),
+                'source': article.get('account_name', '公众号'),
+            })
+        
+        # 去重（按标题相似度），保留总数不超过20条
+        seen_titles = set()
+        unique_result = []
+        for item in result:
+            # 简单去重：取标题前30字符
+            key = item['title'][:30].strip()
+            if key and key not in seen_titles:
+                seen_titles.add(key)
+                unique_result.append(item)
+        
+        return unique_result[:15]
+    
+    def _generate_weekly_overview(self, articles: List[dict],
+                                   ai_news: List[AIContent],
+                                   edu_news: List[EducationContent],
+                                   leidui_news: List[LeiduiContent]) -> str:
+        """使用AI生成周报摘要"""
+        # 收集关键信息用于生成摘要
+        context_parts = []
+        
+        # 教育资讯
+        if edu_news:
+            edu_titles = [f"· {n.title}" for n in edu_news[:10]]
+            context_parts.append(f"本周教育领域重点资讯：\n" + "\n".join(edu_titles))
+        
+        # 投融资
+        if leidui_news:
+            lei_titles = [f"· {n.title}" for n in leidui_news[:5]]
+            context_parts.append(f"投融资/财报动态：\n" + "\n".join(lei_titles))
+        
+        # AI资讯
+        if ai_news:
+            ai_titles = [f"· {n.title}" for n in ai_news[:5]]
+            context_parts.append(f"AI前沿资讯：\n" + "\n".join(ai_titles))
+        
+        if not context_parts:
+            return ''
+        
+        context_text = "\n\n".join(context_parts)
+        
+        # 截取合适长度
+        if len(context_text) > 3000:
+            context_text = context_text[:3000] + '…'
+        
+        prompt = f"""你是一个教育行业资深分析师，请根据以下本周教育行业资讯，生成一段简洁的周报摘要（150-250字）。
+
+要求：
+1. 概括本周教育行业的核心动态和趋势
+2. 突出最重要的信息（如重大投融资、政策变化、重要产品发布等）
+3. 语言专业、客观、简练
+4. 只输出摘要内容，不要多余的开场白或结束语
+5. 使用中文
+
+本周资讯概览：
+{context_text}
+
+周报摘要："""
+        
+        try:
+            # 通过 Flask config 获取配置；如果不在应用上下文中则直接尝试读取配置
+            from flask import current_app
+            api_key = current_app.config.get('OPENROUTER_API_KEY', '')
+            base_url = current_app.config.get('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
+            model = current_app.config.get('AI_SUMMARY_MODEL', 'baidu/cobuddy:free')
+        except RuntimeError:
+            # 兜底：尝试从 config 模块读取
+            try:
+                from config import Config
+                api_key = Config.OPENROUTER_API_KEY or ''
+                base_url = getattr(Config, 'OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
+                model = getattr(Config, 'AI_SUMMARY_MODEL', 'baidu/cobuddy:free')
+            except:
+                api_key = ''
+                base_url = 'https://openrouter.ai/api/v1'
+                model = 'baidu/cobuddy:free'
+        
+        if not api_key:
+            return ''
+        
+        try:
+            from openai import OpenAI
+            client = OpenAI(base_url=base_url, api_key=api_key)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=800,
+            )
+            summary = response.choices[0].message.content
+            if summary:
+                return summary.strip()
+            return ''
+        except Exception as e:
+            print(f"[周报摘要] AI生成失败: {e}")
+            return ''
     
     def _format_date(self, dt) -> str:
         """安全格式化日期"""
@@ -240,8 +505,35 @@ class WeeklyReportGenerator:
                          edu_news: List[EducationContent],
                          leidui_news: List[LeiduiContent]) -> str:
         """生成周报内容（HTML格式）"""
-        total_count = len(articles) + len(ai_news) + len(edu_news) + len(leidui_news)
         period_str = f"{self.period_start.strftime('%Y.%m.%d')} - {self.period_end.strftime('%Y.%m.%d')}"
+        
+        # 收集重要资讯标题
+        important_titles = self._collect_important_titles(articles, ai_news, edu_news, leidui_news)
+        
+        # 生成AI周报摘要
+        weekly_summary = self._generate_weekly_overview(articles, ai_news, edu_news, leidui_news)
+        
+        # 构建重点关注标题列表HTML
+        highlights_html = ''
+        if important_titles:
+            titles_html = ''
+            for item in important_titles:
+                titles_html += f'                <li><a href="{item["url"]}" target="_blank" rel="noopener">{item["title"]}</a><span class="wr-highlight-source">{item["source"]}</span></li>\n'
+            highlights_html = f'''
+        <div class="wr-hero-highlights">
+            <h3 class="wr-highlights-title">重点关注</h3>
+            <ul class="wr-highlights-list">
+{titles_html}            </ul>
+        </div>'''
+        
+        # 构建AI摘要HTML
+        summary_html = ''
+        if weekly_summary:
+            summary_html = f'''
+        <div class="wr-hero-summary">
+            <h3 class="wr-summary-title">本周摘要</h3>
+            <p class="wr-summary-text">{weekly_summary}</p>
+        </div>'''
         
         html = f'''<!-- WiseReporter Weekly Report -->
 <div class="wr-weekly-report">
@@ -250,12 +542,9 @@ class WeeklyReportGenerator:
         <div class="wr-hero-badge">WEEKLY REPORT</div>
         <h1 class="wr-hero-title">教育行业周报</h1>
         <p class="wr-hero-period">{period_str}</p>
+        {summary_html}
+        {highlights_html}
         <div class="wr-hero-stats">
-            <div class="wr-stat-item">
-                <span class="wr-stat-num">{total_count}</span>
-                <span class="wr-stat-label">总资讯</span>
-            </div>
-            <div class="wr-stat-divider"></div>
             <div class="wr-stat-item">
                 <span class="wr-stat-num">{len(ai_news)}</span>
                 <span class="wr-stat-label">AI前沿</span>
@@ -309,6 +598,7 @@ class WeeklyReportGenerator:
                         title=news.title,
                         url=news.url,
                         summary=news.summary,
+                        ai_summary=getattr(news, 'ai_summary', ''),
                         publish_date=news.publish_date,
                         source=source_name,
                         source_type='edu'
@@ -460,12 +750,18 @@ class WeeklyReportGenerator:
         return html
     
     def _render_article_card(self, title: str, url: str, summary: str, 
-                             publish_date, source: str, source_type: str = 'default') -> str:
+                             publish_date, source: str, source_type: str = 'default',
+                             ai_summary: str = '') -> str:
         """渲染单篇文章卡片（通用）"""
         date_str = self._format_date(publish_date) if publish_date else ''
         date_short = self._format_date_short(publish_date) if publish_date else ''
         
-        # 摘要截取
+        # AI摘要
+        ai_summary_html = ''
+        if ai_summary:
+            ai_summary_html = f'<p class="wr-card-ai-summary"><strong>AI摘要：</strong>{ai_summary}</p>'
+        
+        # 原文摘要截取
         summary_text = ''
         if summary:
             summary_text = summary[:200].strip()
@@ -480,6 +776,7 @@ class WeeklyReportGenerator:
                         <h4 class="wr-card-title">
                             <a href="{url}" target="_blank" rel="noopener">{title}</a>
                         </h4>
+                        {ai_summary_html}
                         {f'<p class="wr-card-summary">{summary_text}</p>' if summary_text else ''}
                     </div>
                     <div class="wr-card-right">

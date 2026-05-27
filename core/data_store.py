@@ -4,6 +4,7 @@
 from datetime import datetime
 from typing import List, Optional
 import random
+import threading
 import pytz
 from models import db, AIContent, EducationContent, WechatContent, NewsSource, CrawlLog, LeiduiContent
 from core.scraper import AINewsScraper, EducationNewsScraper, JiemoduiScraper, DuozhiScraper, CctvScraper, AIHotSpider, WechatScraper
@@ -13,6 +14,48 @@ from core.leidui_scraper import LeinewsSpider
 
 # 北京时区
 BEIJING_TZ = pytz.timezone('Asia/Shanghai')
+
+
+def _generate_ai_summary_async(record_id: int, title: str, content_text: str):
+    """后台线程中生成AI摘要，避免阻塞接口响应（接收原始值，避免ORM session问题）"""
+    if not content_text:
+        return
+
+    from flask import current_app
+    try:
+        app = current_app._get_current_object()
+        api_key = current_app.config.get('OPENROUTER_API_KEY', '')
+        base_url = current_app.config.get('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
+        model = current_app.config.get('AI_SUMMARY_MODEL', 'baidu/cobuddy:free')
+    except RuntimeError:
+        return
+
+    def _run():
+        from core.ai_summarizer import AISummarizer
+        try:
+            summary = AISummarizer.generate_summary(
+                title, content_text,
+                api_key=api_key, base_url=base_url, model=model
+            )
+            if summary:
+                with app.app_context():
+                    from models import db as models_db
+                    edu = models_db.session.get(EducationContent, record_id)
+                    if edu:
+                        edu.ai_summary = summary
+                        models_db.session.commit()
+                        print(f"[AI摘要] 成功为「{title[:30]}...」生成摘要")
+        except Exception as e:
+            print(f"[AI摘要] 后台生成失败: {e}")
+            try:
+                with app.app_context():
+                    from models import db as models_db
+                    models_db.session.rollback()
+            except:
+                pass
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
 
 
 class ArticleStore:
@@ -80,28 +123,59 @@ class ArticleStore:
         
         return query.paginate(page=page, per_page=per_page, error_out=False)
     
+    # 多知网标题中需要排除自动收藏的关键词
+    DUOZHI_EXCLUDE_KEYWORDS = ['一周连连看', 'AI一周观察']
+
     @staticmethod
     def save_education_content(content_data: dict) -> Optional[EducationContent]:
-        """保存教育资讯"""
+        """保存教育资讯
+        
+        自动收藏规则（仅对新文章生效）：
+        - 芥末堆(jiemodui)、多知网(duozhi)：反选模式，自动收藏
+        - 多知网标题含「一周连连看」「AI一周观察」：不自动收藏
+        - 央视网(cctv)及其他来源：正选模式，默认不收藏
+        """
         existing = EducationContent.query.filter_by(url=content_data.get('url')).first()
         if existing:
             return existing
         
+        source = content_data.get('source', '')
+        title = content_data.get('title', '')
+        is_favorite = False
+        
+        # 反选来源：芥末堆、多知网 → 自动收藏
+        if source in ('jiemodui', 'duozhi'):
+            # 多知网特殊排除规则
+            if source == 'duozhi':
+                excluded = False
+                for kw in ArticleStore.DUOZHI_EXCLUDE_KEYWORDS:
+                    if kw in (title or ''):
+                        excluded = True
+                        break
+                is_favorite = not excluded
+            else:
+                is_favorite = True
+        # 央视网及其他来源 → 正选，默认不收藏（is_favorite保持False）
+        
         edu_content = EducationContent(
-            title=content_data.get('title', ''),
+            title=title,
             url=content_data.get('url', ''),
-            source=content_data.get('source'),
+            source=source,
             source_name=content_data.get('source_name'),
             summary=content_data.get('summary'),
             content=content_data.get('content'),
             publish_date=content_data.get('publish_date'),
             publish_date_str=content_data.get('publish_date_str'),
             category=content_data.get('category'),
-            tags=','.join(content_data.get('tags', [])) if isinstance(content_data.get('tags'), list) else content_data.get('tags')
+            tags=','.join(content_data.get('tags', [])) if isinstance(content_data.get('tags'), list) else content_data.get('tags'),
+            is_favorite=is_favorite
         )
         
         db.session.add(edu_content)
         db.session.commit()
+        # 自动收藏的文章，后台生成AI摘要（commit前提取原始值，避免ORM对象过期）
+        if is_favorite and edu_content.content:
+            _generate_ai_summary_async(edu_content.id, title, content_data.get('content', ''))
         return edu_content
     
     @staticmethod
@@ -153,11 +227,17 @@ class ArticleStore:
     
     @staticmethod
     def toggle_education_favorite(content_id: int) -> Optional[EducationContent]:
-        """切换收藏状态"""
+        """切换收藏状态（收藏时自动调用AI生成摘要）"""
         content = EducationContent.query.get(content_id)
         if content:
             content.is_favorite = not content.is_favorite
+            # 在commit前提取原始值，避免commit后ORM对象过期无法访问属性
+            should_generate = content.is_favorite and not content.ai_summary
+            record_title = content.title
+            record_content = content.content or ''
             db.session.commit()
+            if should_generate:
+                _generate_ai_summary_async(content.id, record_title, record_content)
         return content
     
     @staticmethod
@@ -270,27 +350,49 @@ class ArticleStore:
     
     @staticmethod
     def save_leidui_content(content_data: dict) -> Optional[LeiduiContent]:
-        """保存雷递网资讯"""
+        """保存雷递网资讯（自动收藏知名教育公司相关文章）"""
         existing = LeiduiContent.query.filter_by(url=content_data.get('url')).first()
         if existing:
+            # 更新已有记录的收藏状态
+            if not existing.is_favorite:
+                from core.report_generator import contains_education_company
+                title = existing.title or ''
+                summary = existing.summary or ''
+                if contains_education_company(title) or contains_education_company(summary):
+                    existing.is_favorite = True
+                    db.session.commit()
             return existing
         
+        # 检查是否为教育公司相关
+        from core.report_generator import contains_education_company
+        title = content_data.get('title', '')
+        summary = content_data.get('summary', '') or ''
+        content_text = content_data.get('content', '') or ''
+        is_edu_related = (
+            contains_education_company(title) or 
+            contains_education_company(summary) or
+            contains_education_company(content_text)
+        )
+        
         leidui_content = LeiduiContent(
-            title=content_data.get('title', ''),
+            title=title,
             url=content_data.get('url', ''),
             source=content_data.get('source', 'leinews'),
             source_name=content_data.get('source_name', '雷递网'),
             summary=content_data.get('summary'),
-            content=content_data.get('content'),
+            content=content_text,
             cover_image=content_data.get('cover_image'),
             category=content_data.get('category'),
             tags=','.join(content_data.get('tags', [])) if isinstance(content_data.get('tags'), list) else content_data.get('tags'),
             author=content_data.get('author'),
-            publish_date=content_data.get('publish_date')
+            publish_date=content_data.get('publish_date'),
+            is_favorite=is_edu_related  # 教育公司相关自动收藏
         )
         
         db.session.add(leidui_content)
         db.session.commit()
+        if is_edu_related:
+            print(f"[雷递网] 自动收藏教育公司资讯: {title[:50]}")
         return leidui_content
     
     @staticmethod

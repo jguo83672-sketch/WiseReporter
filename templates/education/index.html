@@ -26,6 +26,14 @@
                 </select>
             </div>
             <div class="filter-group">
+                <label>收藏：</label>
+                <select name="is_favorite" onchange="document.getElementById('filterForm').submit()">
+                    <option value="">全部</option>
+                    <option value="true" {% if current_is_favorite == True %}selected{% endif %}>已收藏</option>
+                    <option value="false" {% if current_is_favorite == False %}selected{% endif %}>未收藏</option>
+                </select>
+            </div>
+            <div class="filter-group">
                 <label>排序：</label>
                 <select name="sort" onchange="document.getElementById('filterForm').submit()">
                     <option value="publish_date" {% if current_sort == 'publish_date' %}selected{% endif %}>按发布时间</option>
@@ -37,7 +45,7 @@
                 <input type="text" name="keyword" placeholder="搜索标题/摘要/内容" value="{{ keyword or '' }}">
                 <button type="submit" class="btn btn-sm btn-primary">搜索</button>
                 {% if keyword %}
-                <a href="{{ url_for('main.education_news', source=current_source) }}" class="btn btn-sm">清除</a>
+                <a href="{{ url_for('main.education_news', source=current_source, sort=current_sort, is_favorite=current_is_favorite) }}" class="btn btn-sm">清除</a>
                 {% endif %}
             </div>
         </div>
@@ -78,6 +86,9 @@
                 {{ news.publish_date|format_date('%Y-%m-%d %H:%M') if news.publish_date else (news.publish_date_str or (news.created_at|format_date if news.created_at else '-')) }}
             </span>
         </div>
+        {% if news.ai_summary %}
+        <p class="news-summary ai-summary"><strong>AI摘要：</strong>{{ news.ai_summary }}</p>
+        {% endif %}
         {% if news.summary %}
         <p class="news-summary">{{ news.summary[:150] }}{% if news.summary|length > 150 %}...{% endif %}</p>
         {% endif %}
@@ -103,7 +114,7 @@
 {% if pagination.pages > 1 %}
 <div class="pagination">
     {% if pagination.has_prev %}
-    <a href="{{ url_for('main.education_news', page=pagination.prev_num, source=current_source, keyword=keyword, sort=current_sort) }}" class="page-link">上一页</a>
+    <a href="{{ url_for('main.education_news', page=pagination.prev_num, source=current_source, keyword=keyword, sort=current_sort, is_favorite=current_is_favorite) }}" class="page-link">上一页</a>
     {% endif %}
     
     {% set start_page = 1 %}
@@ -122,7 +133,7 @@
     {% endif %}
     
     {% if start_page > 1 %}
-    <a href="{{ url_for('main.education_news', page=1, source=current_source, keyword=keyword, sort=current_sort) }}" class="page-link">1</a>
+    <a href="{{ url_for('main.education_news', page=1, source=current_source, keyword=keyword, sort=current_sort, is_favorite=current_is_favorite) }}" class="page-link">1</a>
     {% if start_page > 2 %}<span class="page-ellipsis">...</span>{% endif %}
     {% endif %}
     
@@ -130,17 +141,17 @@
         {% if p == pagination.page %}
         <span class="page-link active">{{ p }}</span>
         {% else %}
-        <a href="{{ url_for('main.education_news', page=p, source=current_source, keyword=keyword, sort=current_sort) }}" class="page-link">{{ p }}</a>
+        <a href="{{ url_for('main.education_news', page=p, source=current_source, keyword=keyword, sort=current_sort, is_favorite=current_is_favorite) }}" class="page-link">{{ p }}</a>
         {% endif %}
     {% endfor %}
     
     {% if end_page < pagination.pages %}
     {% if end_page < pagination.pages - 1 %}<span class="page-ellipsis">...</span>{% endif %}
-    <a href="{{ url_for('main.education_news', page=pagination.pages, source=current_source, keyword=keyword, sort=current_sort) }}" class="page-link">{{ pagination.pages }}</a>
+    <a href="{{ url_for('main.education_news', page=pagination.pages, source=current_source, keyword=keyword, sort=current_sort, is_favorite=current_is_favorite) }}" class="page-link">{{ pagination.pages }}</a>
     {% endif %}
     
     {% if pagination.has_next %}
-    <a href="{{ url_for('main.education_news', page=pagination.next_num, source=current_source, keyword=keyword, sort=current_sort) }}" class="page-link">下一页</a>
+    <a href="{{ url_for('main.education_news', page=pagination.next_num, source=current_source, keyword=keyword, sort=current_sort, is_favorite=current_is_favorite) }}" class="page-link">下一页</a>
     {% endif %}
 </div>
 {% endif %}
@@ -266,6 +277,14 @@
     margin-bottom: 15px;
 }
 
+.ai-summary {
+    background: #f0f8ff;
+    border-left: 3px solid #007bff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    color: #333;
+}
+
 .card-actions {
     display: flex;
     gap: 10px;
@@ -275,6 +294,8 @@
 .header-actions {
     display: flex;
     gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
 }
 
 /* 筛选栏样式 */
@@ -452,10 +473,10 @@ async function crawlAllEducationNews() {
 
 async function toggleFavorite(newsId) {
     try {
-        const response = await fetch(`/api/education/news/${newsId}/favorite`, {
+        var response = await fetch(`/api/education/news/${newsId}/favorite`, {
             method: 'POST'
         });
-        const result = await response.json();
+        var result = await response.json();
         if (result.code === 0) {
             location.reload();
         }
@@ -468,10 +489,10 @@ async function deleteNews(newsId) {
     if (!confirm('确定要删除这条资讯吗？')) return;
     
     try {
-        const response = await fetch(`/api/education/news/${newsId}`, {
+        var response = await fetch(`/api/education/news/${newsId}`, {
             method: 'DELETE'
         });
-        const result = await response.json();
+        var result = await response.json();
         if (result.code === 0) {
             location.reload();
         } else {

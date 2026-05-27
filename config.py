@@ -33,6 +33,11 @@ class Config:
     COZE_WORKFLOW_ID = '7641508293730467875'  # 微信公众号链接获取工作流
     COZE_API_TOKEN = os.environ.get('COZE_API_TOKEN') or ''  # 需要在环境变量中设置
 
+    # OpenRouter AI配置（百度千帆文本模型）
+    OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY') or ''
+    OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+    AI_SUMMARY_MODEL = 'baidu/cobuddy:free'
+
 class DevelopmentConfig(Config):
     DEBUG = True
 

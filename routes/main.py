@@ -270,9 +270,14 @@ def education_news():
     source = request.args.get('source')
     keyword = request.args.get('keyword')
     sort = request.args.get('sort', 'publish_date')  # 默认按发布时间排序
+    is_favorite = request.args.get('is_favorite')
+    if is_favorite is not None:
+        is_favorite = is_favorite.lower() == 'true'
     
     pagination = ArticleStore.get_education_contents(
-        page=page, per_page=per_page, source=source, keyword=keyword, sort_by=sort
+        page=page, per_page=per_page,
+        source=source, keyword=keyword, sort_by=sort,
+        is_favorite=is_favorite
     )
     
     # 获取各来源统计
@@ -294,6 +299,7 @@ def education_news():
                          source_stats=source_stats,
                          current_source=source,
                          current_sort=sort,
+                         current_is_favorite=is_favorite,
                          keyword=keyword)
 
 @main_bp.route('/education/<int:news_id>')
