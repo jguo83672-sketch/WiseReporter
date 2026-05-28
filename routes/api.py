@@ -3,7 +3,7 @@ API路由
 """
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
-from models import db, AIContent, EducationContent, WechatContent, CookiePool, WeeklyReport, NewsSource, CrawlLog, OfficialAccount, Article, WechatCredential, CrawlTaskConfig, LeiduiContent
+from models import db, AIContent, EducationContent, WechatContent, CookiePool, WeeklyReport, NewsSource, CrawlLog, OfficialAccount, WechatCredential, CrawlTaskConfig, LeiduiContent, FinanceContent
 from core.data_store import ArticleStore, CrawlManager, CrawlProgressManager
 from core.cookie_manager import CookieManager
 from core.report_generator import WeeklyReportGenerator
@@ -24,7 +24,6 @@ BEIJING_TZ = pytz.timezone('Asia/Shanghai')
 # ==================== AI资讯API ====================
 
 @api_bp.route('/ai-news', methods=['GET'])
-@login_required
 def get_ai_news():
     """获取AI资讯列表"""
     page = request.args.get('page', 1, type=int)
@@ -223,7 +222,6 @@ def delete_cookie(cookie_id):
 # ==================== 周报API ====================
 
 @api_bp.route('/reports', methods=['GET'])
-@login_required
 def get_reports():
     """获取周报列表"""
     reports = WeeklyReportGenerator.get_reports()
@@ -321,14 +319,12 @@ def delete_report(report_id):
     })
 
 @api_bp.route('/reports/<int:report_id>/html', methods=['GET'])
-@login_required
 def get_report_html(report_id):
     """获取周报HTML"""
     report = WeeklyReport.query.get_or_404(report_id)
     return jsonify({'code': 0, 'data': {'html': report.content}})
 
 @api_bp.route('/reports/<int:report_id>/export', methods=['GET'])
-@login_required
 def export_report(report_id):
     """导出周报"""
     report = WeeklyReport.query.get_or_404(report_id)
@@ -358,7 +354,6 @@ def export_report(report_id):
 # ==================== 教育资讯API ====================
 
 @api_bp.route('/education/news', methods=['GET'])
-@login_required
 def get_education_news():
     """获取教育资讯列表"""
     page = request.args.get('page', 1, type=int)
@@ -381,11 +376,11 @@ def get_education_news():
     })
 
 @api_bp.route('/education/news/<int:news_id>', methods=['GET'])
-@login_required
 def get_education_news_detail(news_id):
     """获取教育资讯详情"""
     content = EducationContent.query.get_or_404(news_id)
-    ArticleStore.toggle_education_read(news_id)
+    if current_user.is_authenticated:
+        ArticleStore.toggle_education_read(news_id)
     return jsonify({
         'code': 0,
         'data': content.to_dict()
@@ -498,7 +493,6 @@ def crawl_education_news():
         }), 500
 
 @api_bp.route('/education/sources', methods=['GET'])
-@login_required
 def get_education_sources():
     """获取教育资讯来源"""
     sources = db.session.query(
@@ -512,72 +506,79 @@ def get_education_sources():
         'data': [{'source': s[0], 'name': s[1], 'count': s[2]} for s in sources]
     })
 
-# ==================== 雷递网资讯API ====================
+# ==================== 投融资/财报资讯API（统一雷递网+投资界）====================
 
-@api_bp.route('/leidui/news', methods=['GET'])
-@login_required
-def get_leidui_news():
-    """获取雷递网资讯列表"""
+@api_bp.route('/finance/news', methods=['GET'])
+def get_finance_news():
+    """获取投融资/财报资讯列表（合并雷递网+投资界）"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     category = request.args.get('category')
     keyword = request.args.get('keyword')
-    
-    pagination = ArticleStore.get_leidui_contents(
-        page=page, per_page=per_page, category=category, keyword=keyword
+    is_favorite = request.args.get('is_favorite')
+    if is_favorite is not None:
+        is_favorite = is_favorite.lower() in ('true', '1')
+
+    pagination = ArticleStore.get_finance_contents(
+        page=page, per_page=per_page, category=category,
+        keyword=keyword, is_favorite=is_favorite
     )
-    
+
     return jsonify({
         'code': 0,
         'data': {
-            'items': [item.to_dict() for item in pagination.items],
+            'items': pagination.items,
             'total': pagination.total,
             'pages': pagination.pages,
             'page': page
         }
     })
 
-@api_bp.route('/leidui/news/<int:news_id>', methods=['GET'])
-@login_required
-def get_leidui_news_detail(news_id):
-    """获取雷递网资讯详情"""
-    content = LeiduiContent.query.get_or_404(news_id)
-    ArticleStore.toggle_leidui_read(news_id)
+@api_bp.route('/finance/news/<string:news_uid>', methods=['GET'])
+def get_finance_news_detail(news_uid):
+    """获取投融资/财报资讯详情（复合ID: leidui-123 或 pedaily-456）"""
+    record, source_table = ArticleStore._get_finance_record(news_uid)
+    if not record:
+        return jsonify({'code': 404, 'message': '记录不存在'}), 404
+    if current_user.is_authenticated:
+        ArticleStore.toggle_finance_read(news_uid)
     return jsonify({
         'code': 0,
-        'data': content.to_dict()
+        'data': ArticleStore._finance_to_dict(record, source_table)
     })
 
-@api_bp.route('/leidui/news/<int:news_id>/favorite', methods=['POST'])
+@api_bp.route('/finance/news/<string:news_uid>/favorite', methods=['POST'])
 @login_required
-def toggle_leidui_favorite(news_id):
-    """切换收藏状态"""
-    content = ArticleStore.toggle_leidui_favorite(news_id)
+def toggle_finance_favorite(news_uid):
+    """切换收藏状态（复合ID）"""
+    record, source_table = ArticleStore.toggle_finance_favorite(news_uid)
+    if not record:
+        return jsonify({'code': 404, 'message': '记录不存在'}), 404
     return jsonify({
         'code': 0,
         'data': {
-            'id': content.id,
-            'is_favorite': content.is_favorite
+            'uid': ArticleStore._finance_uid(source_table, record.id),
+            'is_favorite': record.is_favorite
         }
     })
 
-@api_bp.route('/leidui/news/<int:news_id>', methods=['DELETE'])
-@require_permission('write_leidui')
-def delete_leidui_news(news_id):
-    """删除雷递网资讯"""
-    success = ArticleStore.delete_leidui_content(news_id)
+@api_bp.route('/finance/news/<string:news_uid>', methods=['DELETE'])
+@require_permission('write_finance')
+def delete_finance_news(news_uid):
+    """删除投融资资讯（复合ID）"""
+    success = ArticleStore.delete_finance_content(news_uid)
     return jsonify({
         'code': 0 if success else 1,
         'message': '删除成功' if success else '删除失败'
     })
 
-@api_bp.route('/leidui/crawl', methods=['POST'])
-@require_permission('write_leidui')
-def crawl_leidui_news():
-    """采集雷递网最新资讯（首页，最多10篇）"""
+@api_bp.route('/finance/crawl', methods=['POST'])
+@require_permission('write_finance')
+def crawl_finance_news():
+    """采集投融资最新资讯（雷递网+投资界）"""
     try:
         manager = CrawlManager()
-        result = manager.crawl_leidui_news()
+        result = manager.crawl_finance_news()
         return jsonify({
             'code': 0 if result.get('success') else 1,
             'data': result
@@ -589,6 +590,7 @@ def crawl_leidui_news():
             'code': 1,
             'message': f'采集失败: {str(e)}'
         }), 500
+
 
 # ==================== 采集进度API ====================
 
@@ -780,7 +782,6 @@ def delete_wechat_account(account_id):
 # ==================== 公众号文章API ====================
 
 @api_bp.route('/wechat/articles', methods=['GET'])
-@login_required
 def get_wechat_articles():
     """获取公众号文章列表"""
     page = request.args.get('page', 1, type=int)
@@ -804,7 +805,6 @@ def get_wechat_articles():
     })
 
 @api_bp.route('/wechat/articles/<int:article_id>', methods=['GET'])
-@login_required
 def get_wechat_article_detail(article_id):
     """获取公众号文章详情"""
     content = WechatContent.query.get_or_404(article_id)
@@ -1730,9 +1730,9 @@ def run_crawl_task_now(task_id):
             result = manager.crawl_education_news()
             task.last_status = 'success'
             task.last_message = result.get('message', '采集成功')
-        elif task.task_type == 'leidui_news':
+        elif task.task_type == 'finance_news':
             manager = CrawlManager()
-            result = manager.crawl_leidui_news()
+            result = manager.crawl_finance_news()
             task.last_status = 'success'
             task.last_message = result.get('message', '采集成功')
         else:
@@ -1775,10 +1775,80 @@ def save_settings():
     if 'min_cookie_count' in data:
         current_app.config['MIN_COOKIE_COUNT'] = data['min_cookie_count']
 
+    # 持久化周报设置
+    from models import SystemConfig
+    schedule_updated = False
+    if 'weekly_report_enabled' in data:
+        old_val = SystemConfig.get('weekly_report_enabled')
+        SystemConfig.set('weekly_report_enabled', str(data['weekly_report_enabled']).lower(), '是否自动生成周报')
+        if old_val != str(data['weekly_report_enabled']).lower():
+            schedule_updated = True
+    if 'weekly_report_day_of_week' in data:
+        old_val = SystemConfig.get('weekly_report_day_of_week')
+        day = data['weekly_report_day_of_week']
+        if day in ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'):
+            SystemConfig.set('weekly_report_day_of_week', day, '周报自动生成日')
+            if old_val != day:
+                schedule_updated = True
+    if 'weekly_report_hour' in data:
+        old_val = SystemConfig.get('weekly_report_hour')
+        try:
+            hour = int(data['weekly_report_hour'])
+            if 0 <= hour <= 23:
+                SystemConfig.set('weekly_report_hour', str(hour), '周报自动生成小时')
+                if old_val != str(hour):
+                    schedule_updated = True
+        except (ValueError, TypeError):
+            pass
+    if 'weekly_report_minute' in data:
+        old_val = SystemConfig.get('weekly_report_minute')
+        try:
+            minute = int(data['weekly_report_minute'])
+            if 0 <= minute <= 59:
+                SystemConfig.set('weekly_report_minute', str(minute), '周报自动生成分钟')
+                if old_val != str(minute):
+                    schedule_updated = True
+        except (ValueError, TypeError):
+            pass
+
+    # 如果周报设置变更，更新调度器
+    if schedule_updated:
+        try:
+            from scheduler import update_weekly_report_schedule
+            update_weekly_report_schedule()
+        except Exception as e:
+            current_app.logger.warning(f'更新周报调度失败: {e}')
+
     return jsonify({
         'code': 0,
-        'message': '设置已保存'
+        'message': '设置已保存' + ('，周报定时已更新' if schedule_updated else '')
     })
+
+
+@api_bp.route('/settings/weekly-report', methods=['GET'])
+@login_required
+def get_weekly_report_settings():
+    """获取周报自动生成设置"""
+    from models import SystemConfig
+    return jsonify({
+        'code': 0,
+        'data': {
+            'enabled': SystemConfig.get_bool('weekly_report_enabled', True),
+            'day_of_week': SystemConfig.get('weekly_report_day_of_week', 'mon'),
+            'hour': SystemConfig.get_int('weekly_report_hour', 9),
+            'minute': SystemConfig.get_int('weekly_report_minute', 0),
+            'day_label': _get_day_label(SystemConfig.get('weekly_report_day_of_week', 'mon'))
+        }
+    })
+
+
+def _get_day_label(day_code):
+    """获取星期几的中文标签"""
+    labels = {
+        'mon': '周一', 'tue': '周二', 'wed': '周三',
+        'thu': '周四', 'fri': '周五', 'sat': '周六', 'sun': '周日'
+    }
+    return labels.get(day_code, day_code)
 
 
 @api_bp.route('/settings/tasks', methods=['POST'])
@@ -1802,7 +1872,7 @@ def create_crawl_task():
         return jsonify({'code': 1, 'message': '任务名称已存在'})
 
     # 验证任务类型
-    valid_types = ['ai_news', 'education_news', 'wechat_search']
+    valid_types = ['ai_news', 'education_news', 'finance_news', 'wechat_search']
     if data['task_type'] not in valid_types:
         return jsonify({'code': 1, 'message': f'无效的任务类型，有效值: {", ".join(valid_types)}'})
 
@@ -1881,14 +1951,20 @@ def get_task_types():
         {
             'type': 'ai_news',
             'name': 'AI资讯采集',
-            'description': '通过搜狗搜索采集AI领域最新资讯',
+            'description': '通过AI HOT API采集AI领域最新资讯',
             'has_keywords': True
         },
         {
             'type': 'education_news',
             'name': '教育资讯采集',
-            'description': '通过搜狗搜索采集教育行业资讯',
+            'description': '自动采集教育行业最新资讯',
             'has_keywords': True
+        },
+        {
+            'type': 'finance_news',
+            'name': '投融资/财报采集',
+            'description': '自动采集雷递网、投资界等平台投融资/财报资讯',
+            'has_keywords': False
         },
         {
             'type': 'wechat_search',
@@ -1939,6 +2015,18 @@ def init_default_tasks():
             'cron_day_of_week': 'mon,tue,wed,thu,fri',
             'max_count': 20,
             'auto_crawl_content': True
+        },
+        {
+            'task_name': 'finance_news',
+            'task_type': 'finance_news',
+            'display_name': '投融资/财报采集',
+            'description': '自动采集雷递网、投资界等投融资/财报资讯',
+            'is_enabled': True,
+            'cron_hour': 11,
+            'cron_minute': 0,
+            'cron_day_of_week': 'mon,wed,fri',
+            'max_count': 20,
+            'auto_crawl_content': True
         }
     ]
 
@@ -1952,3 +2040,188 @@ def init_default_tasks():
         'code': 0,
         'message': f'已初始化 {len(default_tasks)} 个默认任务'
     })
+
+
+# ==================== 教育公司关键词管理API ====================
+
+@api_bp.route('/settings/education-companies', methods=['GET'])
+@require_permission('manage_settings')
+def get_education_companies():
+    """获取教育公司关键词列表（按分类分组）"""
+    from models import EducationCompany
+    from sqlalchemy import func
+    category_filter = request.args.get('category')  # 可选：按分类筛选
+
+    query = EducationCompany.query
+    if category_filter:
+        query = query.filter_by(category=category_filter)
+    companies = query.order_by(EducationCompany.category, func.lower(EducationCompany.keyword)).all()
+
+    # 按分类分组（处理旧数据category为NULL的情况）
+    grouped = {}
+    for c in companies:
+        cat = c.category or 'education_company'
+        grouped.setdefault(cat, []).append(c.to_dict())
+
+    # 补充空分类
+    for cat, label in EducationCompany.CATEGORY_LABELS.items():
+        grouped.setdefault(cat, [])
+
+    return jsonify({
+        'code': 0,
+        'data': {
+            'categories': [{'key': k, 'label': EducationCompany.CATEGORY_LABELS.get(k, k), 'count': len(v), 'items': v} for k, v in grouped.items()],
+            'total': len(companies)
+        }
+    })
+
+
+@api_bp.route('/settings/education-companies', methods=['POST'])
+@require_permission('manage_settings')
+def add_education_company():
+    """添加教育公司关键词"""
+    from models import EducationCompany
+    data = request.json
+    if not data or 'keyword' not in data:
+        return jsonify({'code': 1, 'message': '请提供关键词'})
+
+    keyword = data['keyword'].strip()
+    if not keyword:
+        return jsonify({'code': 1, 'message': '关键词不能为空'})
+
+    category = data.get('category', 'education_company')
+    if category not in EducationCompany.CATEGORY_LABELS:
+        return jsonify({'code': 1, 'message': f'无效的分类: {category}'})
+
+    existing = EducationCompany.query.filter_by(keyword=keyword).first()
+    if existing:
+        return jsonify({'code': 1, 'message': f'关键词「{keyword}」已存在'})
+
+    try:
+        company = EducationCompany(keyword=keyword, category=category)
+        db.session.add(company)
+        db.session.commit()
+        # 使缓存失效
+        from core.report_generator import invalidate_edu_companies_cache
+        invalidate_edu_companies_cache()
+        return jsonify({
+            'code': 0,
+            'data': company.to_dict(),
+            'message': f'关键词「{keyword}」添加成功'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'code': 1, 'message': f'添加失败: {str(e)}'})
+
+
+@api_bp.route('/settings/education-companies/<int:company_id>', methods=['DELETE'])
+@require_permission('manage_settings')
+def delete_education_company(company_id):
+    """删除教育公司关键词"""
+    from models import EducationCompany
+    company = EducationCompany.query.get_or_404(company_id)
+    keyword = company.keyword
+    try:
+        db.session.delete(company)
+        db.session.commit()
+        # 使缓存失效
+        from core.report_generator import invalidate_edu_companies_cache
+        invalidate_edu_companies_cache()
+        return jsonify({
+            'code': 0,
+            'message': f'关键词「{keyword}」已删除'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'code': 1, 'message': f'删除失败: {str(e)}'})
+
+
+@api_bp.route('/settings/education-companies/init', methods=['POST'])
+@require_permission('manage_settings')
+def init_education_companies():
+    """初始化教育公司关键词（从硬编码列表导入到「教育公司中英文名称」分类）"""
+    from models import EducationCompany
+    from core.report_generator import EDUCATION_COMPANIES
+    existing_count = EducationCompany.query.count()
+    if existing_count > 0:
+        return jsonify({
+            'code': 0,
+            'message': f'已存在 {existing_count} 个关键词，如需重新初始化请先清空'
+        })
+
+    added = 0
+    try:
+        for keyword in EDUCATION_COMPANIES:
+            company = EducationCompany(keyword=keyword, category='education_company')
+            db.session.add(company)
+            added += 1
+        db.session.commit()
+        from core.report_generator import invalidate_edu_companies_cache
+        invalidate_edu_companies_cache()
+        return jsonify({
+            'code': 0,
+            'data': {'added': added},
+            'message': f'成功导入 {added} 个教育公司关键词'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'code': 1, 'message': f'初始化失败: {str(e)}'})
+
+
+@api_bp.route('/settings/education-companies/recheck', methods=['POST'])
+@require_permission('manage_settings')
+def recheck_education_companies():
+    """重新检查已有投融资资讯（根据当前关键词更新收藏状态）"""
+    from models import EducationCompany, LeiduiContent, FinanceContent
+    from core.report_generator import contains_education_company, find_matching_education_company, invalidate_edu_companies_cache
+
+    invalidate_edu_companies_cache()
+
+    updated_leidui = 0
+    updated_finance = 0
+
+    try:
+        # 重新检查雷递网资讯
+        leidui_records = LeiduiContent.query.all()
+        for record in leidui_records:
+            should_fav = (
+                contains_education_company(record.title or '') or
+                contains_education_company(record.summary or '') or
+                contains_education_company(record.content or '')
+            )
+            if record.is_favorite != should_fav:
+                record.is_favorite = should_fav
+                record.matched_keyword = find_matching_education_company(
+                    record.title or '', record.summary or '', record.content or ''
+                ) if should_fav else None
+                updated_leidui += 1
+
+        # 重新检查投资界资讯
+        finance_records = FinanceContent.query.all()
+        for record in finance_records:
+            should_fav = (
+                contains_education_company(record.title or '') or
+                contains_education_company(record.summary or '') or
+                contains_education_company(record.content or '')
+            )
+            if record.is_favorite != should_fav:
+                record.is_favorite = should_fav
+                record.matched_keyword = find_matching_education_company(
+                    record.title or '', record.summary or '', record.content or ''
+                ) if should_fav else None
+                updated_finance += 1
+
+        db.session.commit()
+
+        return jsonify({
+            'code': 0,
+            'data': {
+                'leidui_updated': updated_leidui,
+                'finance_updated': updated_finance,
+                'total_updated': updated_leidui + updated_finance
+            },
+            'message': f'已更新 {updated_leidui + updated_finance} 条资讯的收藏状态'
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'code': 1, 'message': f'重新检查失败: {str(e)}'})

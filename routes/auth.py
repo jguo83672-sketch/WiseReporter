@@ -14,7 +14,7 @@ AVAILABLE_PERMISSIONS = [
     {'key': 'write_articles', 'label': '文章管理', 'desc': '可增删改文章'},
     {'key': 'write_ai_news', 'label': 'AI资讯管理', 'desc': '可增删改AI资讯'},
     {'key': 'write_education', 'label': '教育资讯管理', 'desc': '可增删改教育资讯'},
-    {'key': 'write_leidui', 'label': '投融资/财报管理', 'desc': '可增删改投融资资讯'},
+    {'key': 'write_finance', 'label': '投融资/财报管理', 'desc': '可增删改投融资资讯'},
     {'key': 'write_reports', 'label': '周报管理', 'desc': '可生成/编辑/删除周报'},
     {'key': 'manage_crawl', 'label': '采集管理', 'desc': '可执行采集任务'},
     {'key': 'manage_settings', 'label': '系统设置', 'desc': '可修改系统设置'},

@@ -1,31 +1,30 @@
 {% extends "base.html" %}
 
-{% block title %}{{ content.title[:30] }}... - 雷递网{% endblock %}
+{% block title %}{{ content.title[:30] }}... - 投融资/财报{% endblock %}
 
 {% block content %}
 <div class="article-detail-container">
     <div class="article-detail">
         <div class="article-header">
-            <span class="category-badge">{{ content.category or '资讯' }}</span>
+            <span class="source-name">{{ content.source_name or '未知来源' }}</span>
+            {% if content.category %}<span class="category-badge">{{ content.category }}</span>{% endif %}
+            {% if content.is_favorite and content.matched_keyword %}
+            <span class="matched-keyword-badge" title="自动收藏：文章包含关键词「{{ content.matched_keyword }}」">
+                包含关键词「{{ content.matched_keyword }}」
+            </span>
+            {% endif %}
             <h1>{{ content.title }}</h1>
             <div class="article-meta">
                 <span class="meta-item">
-                    <i class="icon-user"></i>
-                    {{ content.author or '雷递网' }}
+                    {{ content.author or content.source_name or '' }}
                 </span>
                 <span class="meta-item">
-                    <i class="icon-calendar"></i>
-                    {{ content.publish_date|format_date('%Y-%m-%d') if content.publish_date else (content.created_at|format_date('%Y-%m-%d') if content.created_at else '-') }}
+                    {{ content.get('publish_date', '') or (content.created_at|format_date('%Y-%m-%d') if content.created_at else '-') }}
                 </span>
                 <span class="meta-item source">
-                    {{ content.source_name or '雷递网' }}
+                    {{ content.source_name or '' }}
                 </span>
             </div>
-            {% if content.cover_image %}
-            <div class="article-cover">
-                <img src="{{ content.cover_image }}" alt="{{ content.title }}">
-            </div>
-            {% endif %}
         </div>
         
         {% if content.summary %}
@@ -48,12 +47,14 @@
         
         <div class="article-actions">
             <a href="{{ content.url }}" target="_blank" class="btn btn-primary">
-                <i class="icon-external-link"></i> 查看原文
+                查看原文
             </a>
-            <button onclick="toggleFavorite({{ content.id }})" class="btn {% if content.is_favorite %}btn-warning{% else %}btn-default{% endif %}">
+            {% if current_user.is_authenticated %}
+            <button onclick="toggleFavorite('{{ content.uid }}')" class="btn {% if content.is_favorite %}btn-warning{% else %}btn-default{% endif %}">
                 {{ '取消收藏' if content.is_favorite else '收藏' }}
             </button>
-            <a href="{{ url_for('main.leidui_news') }}" class="btn btn-default">
+            {% endif %}
+            <a href="{{ url_for('main.finance_news') }}" class="btn btn-default">
                 返回列表
             </a>
         </div>
@@ -82,6 +83,18 @@
     border-bottom: 1px solid #eee;
 }
 
+.source-name {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #e6f0ff;
+    color: #2f54eb;
+    margin-right: 8px;
+    margin-bottom: 10px;
+}
+
 .category-badge {
     display: inline-block;
     padding: 4px 16px;
@@ -90,6 +103,18 @@
     font-weight: 500;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
+    margin-bottom: 15px;
+}
+
+.matched-keyword-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    margin-left: 6px;
     margin-bottom: 15px;
 }
 
@@ -117,18 +142,6 @@
 .meta-item.source {
     color: #667eea;
     font-weight: 500;
-}
-
-.article-cover {
-    margin-top: 20px;
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.article-cover img {
-    width: 100%;
-    max-height: 400px;
-    object-fit: cover;
 }
 
 .article-summary {
@@ -199,9 +212,9 @@
 
 {% block extra_js %}
 <script>
-async function toggleFavorite(newsId) {
+async function toggleFavorite(uid) {
     try {
-        const response = await fetch(`/api/leidui/news/${newsId}/favorite`, {
+        const response = await fetch(`/api/finance/news/${uid}/favorite`, {
             method: 'POST'
         });
         const result = await response.json();

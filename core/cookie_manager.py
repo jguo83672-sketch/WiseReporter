@@ -160,29 +160,6 @@ class CookieManager:
             return None
     
     @staticmethod
-    def get_least_used_cookie() -> Optional[Dict]:
-        """获取使用次数最少的Cookie"""
-        cookie = CookiePool.query.filter_by(
-            is_available=True
-        ).filter(
-            db.or_(
-                CookiePool.expires_at.is_(None),
-                CookiePool.expires_at > datetime.utcnow()
-            )
-        ).order_by(CookiePool.last_used.asc().nullsfirst()).first()
-        
-        if not cookie:
-            return None
-        
-        cookie.last_used = datetime.utcnow()
-        db.session.commit()
-        
-        return {
-            'cookies': json.loads(cookie.cookie_data),
-            'user_agent': cookie.user_agent or random.choice(Config.USER_AGENTS)
-        }
-    
-    @staticmethod
     def add_cookie(name: str, cookie_data: Dict, user_agent: str = None, 
                    expires_at: datetime = None) -> CookiePool:
         """添加Cookie到池中"""
@@ -196,25 +173,6 @@ class CookieManager:
         db.session.add(cookie)
         db.session.commit()
         return cookie
-    
-    @staticmethod
-    def mark_cookie_failed(cookie_id: int) -> None:
-        """标记Cookie失败"""
-        cookie = CookiePool.query.get(cookie_id)
-        if cookie:
-            cookie.failure_count += 1
-            if cookie.failure_count >= 5:
-                cookie.is_available = False
-            db.session.commit()
-    
-    @staticmethod
-    def mark_cookie_success(cookie_id: int) -> None:
-        """标记Cookie成功"""
-        cookie = CookiePool.query.get(cookie_id)
-        if cookie:
-            cookie.failure_count = 0
-            cookie.is_available = True
-            db.session.commit()
     
     @staticmethod
     def delete_cookie(cookie_id: int) -> bool:

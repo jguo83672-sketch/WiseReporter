@@ -11,7 +11,7 @@
     <!-- 自动采集设置 -->
     <div class="settings-section">
         <h2><i class="icon-clock"></i> 自动采集任务</h2>
-        <p class="section-desc">配置定时自动采集任务，支持AI资讯和教育资讯的定时采集</p>
+        <p class="section-desc">配置定时自动采集任务，支持AI资讯、教育资讯、投融资/财报资讯的定时采集</p>
         
         <div class="task-list-header">
             <button class="btn btn-primary" onclick="showCreateTaskModal()">
@@ -60,19 +60,39 @@
     <!-- 周报设置 -->
     <div class="settings-section">
         <h2><i class="icon-report"></i> 周报设置</h2>
+        <p class="section-desc">配置周报自动生成的时间和周期</p>
+        
         <div class="form-group">
-            <label>默认周报周期</label>
-            <select id="reportPeriod">
-                <option value="7">7天</option>
-                <option value="14">14天</option>
-                <option value="30">30天</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>
-                <input type="checkbox" id="autoReport">
-                自动生成周报
+            <label class="checkbox-label">
+                <input type="checkbox" id="weeklyReportEnabled" checked>
+                <span>启用周报自动生成</span>
             </label>
+            <small class="form-text">开启后系统将在指定时间自动生成并发布周报</small>
+        </div>
+        
+        <div id="weeklyReportTimeGroup">
+            <div class="form-group">
+                <label>生成日期</label>
+                <select id="weeklyReportDay" class="form-control">
+                    <option value="mon">周一</option>
+                    <option value="tue">周二</option>
+                    <option value="wed">周三</option>
+                    <option value="thu">周四</option>
+                    <option value="fri">周五</option>
+                    <option value="sat">周六</option>
+                    <option value="sun">周日</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>生成时间</label>
+                <div class="time-input-group">
+                    <input type="number" id="weeklyReportHour" min="0" max="23" value="9" placeholder="时">
+                    <span>:</span>
+                    <input type="number" id="weeklyReportMinute" min="0" max="59" value="0" placeholder="分">
+                </div>
+                <small class="form-text">24小时制，例如 09:00 表示上午九点</small>
+            </div>
         </div>
     </div>
     
@@ -106,6 +126,7 @@
                     <option value="">请选择任务类型</option>
                     <option value="ai_news">AI资讯采集</option>
                     <option value="education_news">教育资讯采集</option>
+                    <option value="finance_news">投融资/财报采集</option>
                     <option value="wechat_search">微信公众号搜索</option>
                 </select>
             </div>
@@ -484,11 +505,19 @@ $(document).ready(function() {
     // 加载任务列表
     loadTasks();
     
+    // 加载周报设置
+    loadWeeklyReportSettings();
+    
     // 绑定保存设置按钮
     $('#btnSaveSettings').on('click', saveSettings);
     
     // 绑定保存任务按钮
     $('#btnSaveTask').on('click', saveTask);
+    
+    // 周报启用/禁用切换
+    $('#weeklyReportEnabled').on('change', function() {
+        $('#weeklyReportTimeGroup').toggle(this.checked);
+    });
 });
 
 function loadTasks() {
@@ -640,6 +669,7 @@ function onTaskTypeChange() {
     const typeNames = {
         'ai_news': 'AI资讯采集',
         'education_news': '教育资讯采集',
+        'finance_news': '投融资/财报采集',
         'wechat_search': '微信公众号搜索'
     };
     if (typeNames[type] && !$('#taskDisplayName').val()) {
@@ -746,13 +776,35 @@ function deleteTask() {
     });
 }
 
+function loadWeeklyReportSettings() {
+    $.ajax({
+        url: '/api/settings/weekly-report',
+        method: 'GET',
+        success: function(res) {
+            if (res.code === 0 && res.data) {
+                const d = res.data;
+                $('#weeklyReportEnabled').prop('checked', d.enabled);
+                $('#weeklyReportDay').val(d.day_of_week);
+                $('#weeklyReportHour').val(d.hour);
+                $('#weeklyReportMinute').val(d.minute);
+                $('#weeklyReportTimeGroup').toggle(d.enabled);
+            }
+        },
+        error: function() {
+            console.log('加载周报设置失败');
+        }
+    });
+}
+
 function saveSettings() {
     const settings = {
         min_cookie_count: parseInt($('#minCookieCount').val()),
         request_timeout: parseInt($('#requestTimeout').val()),
         crawl_interval: parseInt($('#crawlInterval').val()),
-        report_period: parseInt($('#reportPeriod').val()),
-        auto_report: $('#autoReport').prop('checked')
+        weekly_report_enabled: $('#weeklyReportEnabled').prop('checked'),
+        weekly_report_day_of_week: $('#weeklyReportDay').val(),
+        weekly_report_hour: parseInt($('#weeklyReportHour').val()),
+        weekly_report_minute: parseInt($('#weeklyReportMinute').val())
     };
     
     $.ajax({
@@ -762,7 +814,7 @@ function saveSettings() {
         data: JSON.stringify(settings),
         success: function(res) {
             if (res.code === 0) {
-                alert('设置已保存');
+                alert('设置已保存' + (res.message || ''));
             } else {
                 alert('保存失败: ' + res.message);
             }

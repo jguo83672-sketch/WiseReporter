@@ -6,7 +6,7 @@ from typing import List, Optional
 import random
 import threading
 import pytz
-from models import db, AIContent, EducationContent, WechatContent, NewsSource, CrawlLog, LeiduiContent
+from models import db, AIContent, EducationContent, WechatContent, NewsSource, CrawlLog, LeiduiContent, FinanceContent
 from core.scraper import AINewsScraper, EducationNewsScraper, JiemoduiScraper, DuozhiScraper, CctvScraper, EolScraper, AIHotSpider, WechatScraper
 from core.wechat_scraper import WechatArticleSpider
 from core.cookie_manager import CookieManager
@@ -26,7 +26,7 @@ def _generate_ai_summary_async(record_id: int, title: str, content_text: str):
         app = current_app._get_current_object()
         api_key = current_app.config.get('OPENROUTER_API_KEY', '')
         base_url = current_app.config.get('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
-        model = current_app.config.get('AI_SUMMARY_MODEL', 'baidu/cobuddy:free')
+        models = current_app.config.get('AI_SUMMARY_MODELS', ['qwen/qwen3-next-80b-a3b-instruct:free'])
     except RuntimeError:
         return
 
@@ -35,7 +35,7 @@ def _generate_ai_summary_async(record_id: int, title: str, content_text: str):
         try:
             summary = AISummarizer.generate_summary(
                 title, content_text,
-                api_key=api_key, base_url=base_url, model=model
+                api_key=api_key, base_url=base_url, models=models
             )
             if summary:
                 with app.app_context():
@@ -373,18 +373,25 @@ class ArticleStore:
         """保存雷递网资讯（自动收藏知名教育公司相关文章）"""
         existing = LeiduiContent.query.filter_by(url=content_data.get('url')).first()
         if existing:
-            # 更新已有记录的收藏状态
+            # 更新已有记录的收藏状态和匹配关键词
+            from core.report_generator import contains_education_company, find_matching_education_company
+            title = existing.title or ''
+            summary = existing.summary or ''
             if not existing.is_favorite:
-                from core.report_generator import contains_education_company
-                title = existing.title or ''
-                summary = existing.summary or ''
                 if contains_education_company(title) or contains_education_company(summary):
                     existing.is_favorite = True
+                    existing.matched_keyword = find_matching_education_company(title, summary)
+                    db.session.commit()
+            elif existing.is_favorite and not existing.matched_keyword:
+                # 已收藏但缺少匹配关键词的，补充设置
+                matched = find_matching_education_company(title, summary)
+                if matched:
+                    existing.matched_keyword = matched
                     db.session.commit()
             return existing
         
         # 检查是否为教育公司相关
-        from core.report_generator import contains_education_company
+        from core.report_generator import contains_education_company, find_matching_education_company
         title = content_data.get('title', '')
         summary = content_data.get('summary', '') or ''
         content_text = content_data.get('content', '') or ''
@@ -393,6 +400,7 @@ class ArticleStore:
             contains_education_company(summary) or
             contains_education_company(content_text)
         )
+        matched = find_matching_education_company(title, summary, content_text) if is_edu_related else None
         
         leidui_content = LeiduiContent(
             title=title,
@@ -406,14 +414,15 @@ class ArticleStore:
             tags=','.join(content_data.get('tags', [])) if isinstance(content_data.get('tags'), list) else content_data.get('tags'),
             author=content_data.get('author'),
             publish_date=content_data.get('publish_date'),
-            is_favorite=is_edu_related  # 教育公司相关自动收藏
+            is_favorite=is_edu_related,  # 教育公司相关自动收藏
+            matched_keyword=matched
         )
         
         try:
             db.session.add(leidui_content)
             db.session.commit()
             if is_edu_related:
-                print(f"[雷递网] 自动收藏教育公司资讯: {title[:50]}")
+                print(f"[雷递网] 自动收藏教育公司资讯: {title[:50]} (匹配关键词: {matched})")
             return leidui_content
         except Exception:
             db.session.rollback()
@@ -486,6 +495,220 @@ class ArticleStore:
             db.session.commit()
             return True
         return False
+
+
+    # ---------- 投融资/财报资讯（统一接口：合并雷递网 + 投资界） ----------
+
+    @staticmethod
+    def _finance_uid(source_table: str, record_id: int) -> str:
+        """构建统一ID: leidui-123 或 pedaily-456"""
+        return f"{source_table}-{record_id}"
+
+    @staticmethod
+    def _parse_finance_uid(uid: str):
+        """解析统一ID，返回 (source_table, record_id) 或 (None, None)"""
+        parts = uid.split('-', 1)
+        if len(parts) == 2 and parts[0] in ('leidui', 'pedaily'):
+            try:
+                return parts[0], int(parts[1])
+            except ValueError:
+                pass
+        return None, None
+
+    @staticmethod
+    def _get_finance_record(uid: str):
+        """通过统一ID获取记录"""
+        source_table, record_id = ArticleStore._parse_finance_uid(uid)
+        if source_table == 'leidui':
+            return LeiduiContent.query.get(record_id), 'leidui'
+        elif source_table == 'pedaily':
+            return FinanceContent.query.get(record_id), 'pedaily'
+        return None, None
+
+    @staticmethod
+    def _finance_to_dict(record, source_table: str) -> dict:
+        """将任意投融资记录转为统一格式的字典"""
+        d = record.to_dict()
+        d['uid'] = ArticleStore._finance_uid(source_table, record.id)
+        d['source_table'] = source_table
+        return d
+
+    @staticmethod
+    def save_finance_content(content_data: dict) -> Optional[FinanceContent]:
+        """保存投融资/财报资讯（投资界等，自动收藏教育公司相关文章）"""
+        existing = FinanceContent.query.filter_by(url=content_data.get('url')).first()
+        if existing:
+            from core.report_generator import contains_education_company, find_matching_education_company
+            title = existing.title or ''
+            summary = existing.summary or ''
+            if not existing.is_favorite:
+                if contains_education_company(title) or contains_education_company(summary):
+                    existing.is_favorite = True
+                    existing.matched_keyword = find_matching_education_company(title, summary)
+                    db.session.commit()
+            elif existing.is_favorite and not existing.matched_keyword:
+                # 已收藏但缺少匹配关键词的，补充设置
+                matched = find_matching_education_company(title, summary)
+                if matched:
+                    existing.matched_keyword = matched
+                    db.session.commit()
+            return existing
+
+        from core.report_generator import contains_education_company, find_matching_education_company
+        title = content_data.get('title', '')
+        summary = content_data.get('summary', '') or ''
+        content_text = content_data.get('content', '') or ''
+        is_edu_related = (
+            contains_education_company(title) or
+            contains_education_company(summary) or
+            contains_education_company(content_text)
+        )
+        matched = find_matching_education_company(title, summary, content_text) if is_edu_related else None
+
+        finance = FinanceContent(
+            title=title,
+            url=content_data.get('url', ''),
+            source=content_data.get('source', 'pedaily'),
+            source_name=content_data.get('source_name', '投资界'),
+            summary=content_data.get('summary'),
+            content=content_text,
+            cover_image=content_data.get('cover_image'),
+            category=content_data.get('category'),
+            tags=','.join(content_data.get('tags', [])) if isinstance(content_data.get('tags'), list) else content_data.get('tags'),
+            author=content_data.get('author'),
+            publish_date=content_data.get('publish_date'),
+            publish_date_str=content_data.get('publish_date_str'),
+            is_favorite=is_edu_related,
+            matched_keyword=matched
+        )
+
+        try:
+            db.session.add(finance)
+            db.session.commit()
+            if is_edu_related:
+                print(f"[投融资] 自动收藏教育公司资讯: {title[:50]} (匹配关键词: {matched})")
+            return finance
+        except Exception:
+            db.session.rollback()
+            existing = FinanceContent.query.filter_by(url=content_data.get('url', '')).first()
+            return existing
+
+    @staticmethod
+    def get_finance_contents(page: int = 1, per_page: int = 20,
+                              category: str = None, keyword: str = None,
+                              is_favorite: bool = None,
+                              sort_by: str = 'publish_date'):
+        """获取合并后的投融资资讯列表（雷递网 + 投资界）"""
+        from sqlalchemy import desc
+
+        items = []
+
+        # 查询雷递网
+        leidui_q = LeiduiContent.query
+        if keyword:
+            leidui_q = leidui_q.filter(
+                LeiduiContent.title.contains(keyword) |
+                LeiduiContent.summary.contains(keyword) |
+                LeiduiContent.content.contains(keyword)
+            )
+        if is_favorite is not None:
+            leidui_q = leidui_q.filter(LeiduiContent.is_favorite == is_favorite)
+        for r in leidui_q.all():
+            items.append({'record': r, 'source_table': 'leidui',
+                          'sort_date': r.publish_date or r.created_at or datetime(1900, 1, 1)})
+
+        # 查询投资界
+        pedaily_q = FinanceContent.query
+        if category:
+            pedaily_q = pedaily_q.filter(FinanceContent.category == category)
+        if keyword:
+            pedaily_q = pedaily_q.filter(
+                FinanceContent.title.contains(keyword) |
+                FinanceContent.summary.contains(keyword) |
+                FinanceContent.content.contains(keyword)
+            )
+        if is_favorite is not None:
+            pedaily_q = pedaily_q.filter(FinanceContent.is_favorite == is_favorite)
+        for r in pedaily_q.all():
+            items.append({'record': r, 'source_table': 'pedaily',
+                          'sort_date': r.publish_date or r.created_at or datetime(1900, 1, 1)})
+
+        # 排序
+        items.sort(key=lambda x: x['sort_date'], reverse=True)
+
+        # 分页
+        total = len(items)
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_items = items[start:end]
+
+        # 转为统一格式
+        result_items = [ArticleStore._finance_to_dict(it['record'], it['source_table']) for it in page_items]
+
+        # 构建伪分页对象
+        class PseudoPage:
+            def __init__(self):
+                self.items = result_items
+                self.total = total
+                self.pages = max(1, (total + per_page - 1) // per_page)
+                self.page = page
+                self.per_page = per_page
+                self.has_prev = page > 1
+                self.has_next = page < self.pages
+                self.prev_num = page - 1 if self.has_prev else None
+                self.next_num = page + 1 if self.has_next else None
+
+        return PseudoPage()
+
+    @staticmethod
+    def toggle_finance_favorite(uid: str):
+        """切换收藏（支持复合ID: leidui-123 或 pedaily-456）"""
+        record, source_table = ArticleStore._get_finance_record(uid)
+        if record:
+            record.is_favorite = not record.is_favorite
+            db.session.commit()
+            return record, source_table
+        return None, None
+
+    @staticmethod
+    def toggle_finance_read(uid: str):
+        """标记已读（支持复合ID）"""
+        record, source_table = ArticleStore._get_finance_record(uid)
+        if record:
+            record.is_read = True
+            db.session.commit()
+            return record, source_table
+        return None, None
+
+    @staticmethod
+    def delete_finance_content(uid: str) -> bool:
+        """删除投融资资讯（支持复合ID）"""
+        record, source_table = ArticleStore._get_finance_record(uid)
+        if record:
+            db.session.delete(record)
+            db.session.commit()
+            return True
+        return False
+
+    # ---------- 雷递网单独方法（内部使用，保留兼容） ----------
+
+    @staticmethod
+    def toggle_leidui_favorite(content_id: int) -> Optional[LeiduiContent]:
+        """切换雷递网资讯收藏状态（保留兼容）"""
+        content = LeiduiContent.query.get(content_id)
+        if content:
+            content.is_favorite = not content.is_favorite
+            db.session.commit()
+        return content
+
+    @staticmethod
+    def toggle_leidui_read(content_id: int) -> Optional[LeiduiContent]:
+        """标记雷递网资讯已读（保留兼容）"""
+        content = LeiduiContent.query.get(content_id)
+        if content:
+            content.is_read = True
+            db.session.commit()
+        return content
 
 
 class CrawlManager:
@@ -899,6 +1122,58 @@ class CrawlManager:
                 'success': False,
                 'message': f'采集失败: {str(e)}'
             }
+
+
+    def crawl_finance_news(self) -> dict:
+        """统一采集投融资/财报资讯（雷递网 + 投资界）"""
+        total_saved = 0
+        messages = []
+
+        # 1. 采集投资界
+        try:
+            from core.scrapers.finance import PedailyScraper
+            existing_urls = set(
+                row[0] for row in db.session.query(FinanceContent.url).all()
+            )
+            scraper = PedailyScraper(days=30, max_articles=15)
+            articles_data = scraper.crawl(existing_urls=existing_urls)
+            pedaily_saved = 0
+            for article_data in articles_data:
+                content = ArticleStore.save_finance_content(article_data)
+                if content:
+                    pedaily_saved += 1
+            total_saved += pedaily_saved
+
+            news_source = NewsSource.query.filter_by(name='pedaily').first()
+            if not news_source:
+                news_source = NewsSource(
+                    name='pedaily', url='https://news.pedaily.cn/',
+                    source_type='finance', last_crawl=datetime.now(BEIJING_TZ)
+                )
+                db.session.add(news_source)
+            else:
+                news_source.last_crawl = datetime.now(BEIJING_TZ)
+            db.session.commit()
+            messages.append(f'投资界: +{pedaily_saved}条')
+        except Exception as e:
+            messages.append(f'投资界: 失败({e})')
+
+        # 2. 采集雷递网
+        try:
+            leidui_result = self.crawl_leidui_news()
+            if leidui_result.get('success'):
+                total_saved += leidui_result.get('saved_count', 0)
+                messages.append(f'雷递网: +{leidui_result.get("saved_count", 0)}条')
+            else:
+                messages.append(f'雷递网: 失败({leidui_result.get("message", "")})')
+        except Exception as e:
+            messages.append(f'雷递网: 失败({e})')
+
+        return {
+            'success': True,
+            'saved_count': total_saved,
+            'message': f'共采集 {total_saved} 条投融资资讯（' + ' | '.join(messages) + '）'
+        }
 
 
 class CrawlProgressManager:

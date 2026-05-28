@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app import create_app
-from models import db, User, OfficialAccount, CookiePool, NewsSource
+from models import db, User, OfficialAccount, CookiePool, NewsSource, FinanceContent
 from werkzeug.security import generate_password_hash
 from datetime import datetime
 
@@ -85,6 +85,9 @@ def init_database():
             # 教育资讯源
             {'name': 'edu_jiemodui', 'url': 'https://www.jiemodui.com/', 'source_type': 'education', 'category': '教育'},
             {'name': 'edu_duozhi', 'url': 'https://www.duozhi.com/', 'source_type': 'education', 'category': '教育'},
+            # 投融资源
+            {'name': 'pedaily', 'url': 'https://news.pedaily.cn/', 'source_type': 'finance', 'category': '投融资'},
+            {'name': 'leinews', 'url': 'https://www.leinews.com/', 'source_type': 'finance', 'category': '投融资'},
         ]
         
         for source_data in sample_sources:

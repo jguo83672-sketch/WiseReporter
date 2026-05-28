@@ -6,6 +6,7 @@
 <div class="page-header">
     <h1>教育资讯</h1>
     <div class="header-actions">
+        {% if current_user.is_authenticated and current_user.has_permission('write_education') %}
         <select id="crawlSource" class="crawl-source-select">
             <option value="all">全部来源</option>
             <option value="jiemodui">芥末堆</option>
@@ -14,6 +15,7 @@
             <option value="eol">教育在线</option>
         </select>
         <button onclick="doCrawl()" class="btn btn-primary btn-crawl-trigger">手动采集</button>
+        {% endif %}
     </div>
 </div>
 
@@ -116,10 +118,14 @@
         {% endif %}
         <div class="card-actions">
             <a href="{{ news.url }}" target="_blank" class="btn btn-sm">原文链接</a>
+            {% if current_user.is_authenticated %}
             <button onclick="toggleFavorite({{ news.id }})" class="btn btn-sm {% if news.is_favorite %}btn-warning{% endif %}">
                 {{ '取消收藏' if news.is_favorite else '收藏' }}
             </button>
+            {% if current_user.has_permission('write_education') %}
             <button onclick="deleteNews({{ news.id }})" class="btn btn-sm btn-danger">删除</button>
+            {% endif %}
+            {% endif %}
         </div>
     </div>
     {% else %}
@@ -128,6 +134,7 @@
         {% if keyword %}
         <p class="hint">没有找到包含"{{ keyword }}"的相关内容</p>
         {% endif %}
+        {% if current_user.is_authenticated and current_user.has_permission('write_education') %}
         <div class="empty-actions">
             <select id="crawlSourceEmpty" class="crawl-source-select">
                 <option value="all">全部</option>
@@ -138,6 +145,7 @@
             </select>
             <button onclick="doCrawl('crawlSourceEmpty')" class="btn btn-primary">立即采集</button>
         </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>

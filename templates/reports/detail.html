@@ -20,8 +20,10 @@
     </div>
 
     <div class="report-actions">
+        {% if current_user.is_authenticated and current_user.has_permission('write_reports') %}
         {% if report.status == 'draft' %}
         <button onclick="publishReport({{ report.id }})" class="btn btn-primary">发布</button>
+        {% endif %}
         {% endif %}
         <div class="dropdown" style="display: inline-block;">
             <button class="btn dropdown-toggle" type="button" onclick="toggleExportMenu()">导出</button>
@@ -30,8 +32,10 @@
                 <a href="#" onclick="exportReport('markdown')" class="dropdown-item">Markdown格式</a>
             </div>
         </div>
+        {% if current_user.is_authenticated and current_user.has_permission('write_reports') %}
         <a href="{{ url_for('main.edit_report', report_id=report.id) }}" class="btn btn-edit">编辑</a>
         <button onclick="deleteReport({{ report.id }})" class="btn btn-danger">删除</button>
+        {% endif %}
         <a href="{{ url_for('main.reports') }}" class="btn">返回列表</a>
     </div>
 

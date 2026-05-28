@@ -44,14 +44,8 @@ def init_scheduler(app):
             replace_existing=True
         )
         
-        # 每周一早上9点生成周报
-        scheduler.add_job(
-            func=generate_weekly_report_task,
-            trigger=CronTrigger(day_of_week='mon', hour=9, minute=0, timezone=BEIJING_TZ),
-            id='generate_weekly_report',
-            name='自动生成周报',
-            replace_existing=True
-        )
+        # 加载周报自动生成配置
+        _add_weekly_report_job(scheduler)
     
     scheduler.start()
     logger.info('定时任务调度器已启动（使用北京时间）')
@@ -94,14 +88,15 @@ def _init_default_tasks():
             'auto_crawl_content': True
         },
         {
-            'task_name': 'leidui_news',
-            'task_type': 'leidui_news',
-            'display_name': '雷递网资讯采集',
-            'description': '自动采集雷递网最新资讯',
+            'task_name': 'finance_news',
+            'task_type': 'finance_news',
+            'display_name': '投融资/财报采集',
+            'description': '自动采集雷递网、投资界等投融资/财报资讯',
             'is_enabled': True,
-            'cron_hour': 10,
+            'cron_hour': 11,
             'cron_minute': 0,
-            'max_count': 10,
+            'cron_day_of_week': 'mon,wed,fri',
+            'max_count': 20,
             'auto_crawl_content': True
         }
     ]
@@ -112,7 +107,7 @@ def _init_default_tasks():
         db.session.add(task)
     
     db.session.commit()
-    logger.info('已初始化默认采集任务（包含雷递网）')
+    logger.info('已初始化默认采集任务（包含投融资/财报）')
 
 
 def _load_tasks_from_config(scheduler):
@@ -134,8 +129,8 @@ def _add_job_from_task(scheduler, task):
         func = crawl_ai_news_task
     elif task.task_type == 'education_news':
         func = crawl_education_news_task
-    elif task.task_type == 'leidui_news':
-        func = crawl_leidui_news_task
+    elif task.task_type == 'finance_news':
+        func = crawl_finance_news_task
     else:
         logger.warning(f'未知的任务类型: {task.task_type}')
         return
@@ -186,6 +181,51 @@ def update_scheduler_job(task_name):
     task = CrawlTaskConfig.query.filter_by(task_name=task_name).first()
     if task and task.is_enabled:
         _add_job_from_task(_scheduler, task)
+
+
+def _add_weekly_report_job(scheduler):
+    """根据SystemConfig添加周报定时任务"""
+    from models import SystemConfig
+    
+    enabled = SystemConfig.get_bool('weekly_report_enabled', True)
+    if not enabled:
+        logger.info('周报自动生成已禁用')
+        return
+    
+    day_of_week = SystemConfig.get('weekly_report_day_of_week', 'mon')
+    hour = SystemConfig.get_int('weekly_report_hour', 9)
+    minute = SystemConfig.get_int('weekly_report_minute', 0)
+    
+    try:
+        scheduler.add_job(
+            func=generate_weekly_report_task,
+            trigger=CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=BEIJING_TZ),
+            id='generate_weekly_report',
+            name='自动生成周报',
+            replace_existing=True
+        )
+        logger.info(f'已添加周报任务: 每{day_of_week} {hour:02d}:{minute:02d} 北京时间')
+    except Exception as e:
+        logger.error(f'添加周报任务失败: {e}')
+
+
+def update_weekly_report_schedule():
+    """更新周报定时任务的调度配置（从SystemConfig重新加载）"""
+    global _scheduler
+    
+    if not _scheduler:
+        logger.warning('调度器未初始化，无法更新周报任务')
+        return
+    
+    from models import SystemConfig
+    
+    # 先移除旧任务
+    if _scheduler.get_job('generate_weekly_report'):
+        _scheduler.remove_job('generate_weekly_report')
+        logger.info('已移除旧的周报任务')
+    
+    # 重新加载配置并添加
+    _add_weekly_report_job(_scheduler)
 
 
 def crawl_ai_news_task(task_id=None):
@@ -262,35 +302,31 @@ def crawl_education_news_task(task_id=None):
                 db.session.commit()
 
 
-def crawl_leidui_news_task(task_id=None):
-    """雷递网资讯采集任务"""
+def crawl_finance_news_task(task_id=None):
+    """投融资/财报资讯采集任务"""
     from app import create_app
     from core.data_store import CrawlManager
     from models import CrawlTaskConfig, db
-    
+
     app = create_app()
     with app.app_context():
         try:
-            # 获取任务配置
             task = None
             if task_id:
                 task = CrawlTaskConfig.query.get(task_id)
-            
-            max_count = task.max_count if task else 10
-            
+
             manager = CrawlManager()
-            result = manager.crawl_leidui_news()
-            logger.info(f"雷递网资讯采集完成: {result['message']}")
-            
-            # 更新任务状态（使用北京时间）
+            result = manager.crawl_finance_news()
+            logger.info(f"投融资资讯采集完成: {result['message']}")
+
             if task:
                 task.last_run = datetime.now(BEIJING_TZ)
                 task.last_status = 'success'
                 task.last_message = result.get('message', '采集成功')
                 db.session.commit()
-                
+
         except Exception as e:
-            logger.error(f"雷递网资讯采集失败: {str(e)}")
+            logger.error(f"投融资资讯采集失败: {str(e)}")
             if task:
                 db.session.rollback()
                 task.last_run = datetime.now(BEIJING_TZ)
@@ -333,34 +369,3 @@ def generate_weekly_report_task():
             logger.info(f"自动生成周报成功: {report.title}")
         except Exception as e:
             logger.error(f"自动生成周报失败: {str(e)}")
-
-
-def crawl_accounts_task(account_ids=None):
-    """公众号采集任务"""
-    from app import create_app
-    from core.data_store import CrawlManager
-    from models import OfficialAccount
-    
-    app = create_app()
-    with app.app_context():
-        try:
-            manager = CrawlManager()
-            
-            if account_ids:
-                results = []
-                for account_id in account_ids:
-                    result = manager.crawl_account(account_id)
-                    results.append(result)
-            else:
-                # 采集所有启用的公众号
-                accounts = OfficialAccount.query.filter_by(is_active=True).all()
-                results = []
-                for account in accounts:
-                    result = manager.crawl_account(account.id)
-                    results.append(result)
-            
-            logger.info(f"公众号采集完成，共 {len(results)} 个")
-            return results
-        except Exception as e:
-            logger.error(f"公众号采集失败: {str(e)}")
-            return []

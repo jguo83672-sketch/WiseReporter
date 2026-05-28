@@ -17,7 +17,7 @@
                 <li><a href="{{ url_for('main.reports') }}" class="{% if request.endpoint in ['main.reports', 'main.report_detail', 'main.generate_report'] %}active{% endif %}">周报</a></li>
                 <li><a href="{{ url_for('main.ai_news') }}" class="{% if request.endpoint == 'main.ai_news' %}active{% endif %}">AI资讯</a></li>
                 <li><a href="{{ url_for('main.education_news') }}" class="{% if request.endpoint in ['main.education_news', 'main.education_news_detail'] %}active{% endif %}">教育资讯</a></li>
-                <li><a href="{{ url_for('main.leidui_news') }}" class="{% if request.endpoint in ['main.leidui_news', 'main.leidui_news_detail'] %}active{% endif %}">投融资/财报</a></li>
+                <li><a href="{{ url_for('main.finance_news') }}" class="{% if request.endpoint in ['main.finance_news', 'main.finance_news_detail'] %}active{% endif %}">投融资/财报</a></li>
                 <li><a href="{{ url_for('main.articles') }}" class="{% if request.endpoint == 'main.articles' %}active{% endif %}">文章</a></li>
                 {% if current_user.is_authenticated and current_user.has_permission('write_articles') %}
                 <li><a href="{{ url_for('main.accounts') }}" class="{% if request.endpoint == 'main.accounts' %}active{% endif %}">公众号</a></li>

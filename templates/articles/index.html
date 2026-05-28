@@ -5,7 +5,9 @@
 {% block content %}
 <div class="page-header">
     <h1>文章列表</h1>
+    {% if current_user.is_authenticated and current_user.has_permission('manage_crawl') %}
     <a href="{{ url_for('main.crawl') }}" class="btn btn-primary">采集文章</a>
+    {% endif %}
 </div>
 
 <div class="filter-bar">
@@ -93,10 +95,14 @@
         <div class="card-actions">
             <a href="{{ url_for('main.article_detail', article_id=article.id) }}" class="btn btn-sm">查看详情</a>
             <a href="{{ article.url }}" target="_blank" class="btn btn-sm">原文链接</a>
+            {% if current_user.is_authenticated %}
             <button onclick="toggleFavorite({{ article.id }})" class="btn btn-sm {% if article.is_favorite %}btn-warning{% endif %}">
                 {{ '取消收藏' if article.is_favorite else '收藏' }}
             </button>
+            {% if current_user.has_permission('write_articles') %}
             <button onclick="deleteArticle({{ article.id }})" class="btn btn-sm btn-danger">删除</button>
+            {% endif %}
+            {% endif %}
         </div>
     </div>
     {% else %}
@@ -105,7 +111,9 @@
         {% if keyword %}
         <p class="hint">没有找到包含"{{ keyword }}"的相关内容</p>
         {% endif %}
+        {% if current_user.is_authenticated and current_user.has_permission('manage_crawl') %}
         <a href="{{ url_for('main.crawl') }}" class="btn btn-primary">立即采集</a>
+        {% endif %}
     </div>
     {% endfor %}
 </div>

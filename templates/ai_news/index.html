@@ -5,7 +5,9 @@
 {% block content %}
 <div class="page-header">
     <h1>AI前沿资讯</h1>
+    {% if current_user.is_authenticated and current_user.has_permission('write_ai_news') %}
     <button onclick="crawlAINews()" class="btn btn-primary">采集AI资讯</button>
+    {% endif %}
 </div>
 
 <div class="filter-bar">
@@ -74,7 +76,9 @@
         {% if keyword %}
         <p class="hint">没有找到包含"{{ keyword }}"的相关内容</p>
         {% endif %}
+        {% if current_user.is_authenticated and current_user.has_permission('write_ai_news') %}
         <button onclick="crawlAINews()" class="btn btn-primary">立即采集</button>
+        {% endif %}
     </div>
     {% endfor %}
 </div>

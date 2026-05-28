@@ -3,7 +3,7 @@
 """
 from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_required, current_user
-from models import db, OfficialAccount, Article, AIContent, EducationContent, WeeklyReport, CookiePool, CrawlLog, WechatContent, LeiduiContent
+from models import db, OfficialAccount, Article, AIContent, EducationContent, WeeklyReport, CookiePool, CrawlLog, WechatContent, LeiduiContent, FinanceContent
 from core.data_store import ArticleStore
 from core.decorators import write_required, super_admin_required, require_permission, PERMISSION_LABELS
 from datetime import datetime, timedelta
@@ -25,7 +25,7 @@ def index():
     total_articles = Article.query.count()
     total_ai_news = AIContent.query.count()
     total_education_news = EducationContent.query.count()
-    total_leidui_news = LeiduiContent.query.count()
+    total_finance_news = LeiduiContent.query.count() + FinanceContent.query.count()
     total_cookies = CookiePool.query.filter_by(is_available=True).count()
     
     # 最近一周的数据（使用北京时间）
@@ -33,17 +33,37 @@ def index():
     week_articles = Article.query.filter(Article.created_at >= week_ago).count()
     week_ai_news = AIContent.query.filter(AIContent.created_at >= week_ago).count()
     week_education_news = EducationContent.query.filter(EducationContent.created_at >= week_ago).count()
-    week_leidui_news = LeiduiContent.query.filter(LeiduiContent.created_at >= week_ago).count()
+    week_finance_news = LeiduiContent.query.filter(LeiduiContent.created_at >= week_ago).count() + FinanceContent.query.filter(FinanceContent.created_at >= week_ago).count()
     
     # 最近收藏的教育资讯（前5条）
     favorite_education = EducationContent.query.filter_by(is_favorite=True).order_by(
         EducationContent.created_at.desc()
     ).limit(5).all()
     
-    # 最近的雷递网投融资/财报资讯（前5条）
-    recent_leidui_news = LeiduiContent.query.order_by(
-        LeiduiContent.created_at.desc()
-    ).limit(5).all()
+    # 最近的投融资/财报资讯（前5条，合并两个表）
+    from sqlalchemy import union_all, select, literal
+    leidui_items = LeiduiContent.query.with_entities(
+        LeiduiContent.id, LeiduiContent.title, LeiduiContent.created_at,
+        LeiduiContent.publish_date, LeiduiContent.category, LeiduiContent.source_name
+    ).all()
+    finance_items = FinanceContent.query.with_entities(
+        FinanceContent.id, FinanceContent.title, FinanceContent.created_at,
+        FinanceContent.publish_date, FinanceContent.category, FinanceContent.source_name
+    ).all()
+    
+    recent_finance_news = []
+    for item in leidui_items:
+        recent_finance_news.append({
+            'id': f'leidui-{item[0]}', 'title': item[1], 'created_at': item[2],
+            'publish_date': item[3], 'category': item[4], 'source_name': item[5] or '雷递网'
+        })
+    for item in finance_items:
+        recent_finance_news.append({
+            'id': f'pedaily-{item[0]}', 'title': item[1], 'created_at': item[2],
+            'publish_date': item[3], 'category': item[4], 'source_name': item[5] or '投资界'
+        })
+    recent_finance_news.sort(key=lambda x: x['publish_date'] or x['created_at'] or datetime(1900, 1, 1), reverse=True)
+    recent_finance_news = recent_finance_news[:5]
     
     # 最近的AI资讯
     recent_ai_news = AIContent.query.order_by(
@@ -66,14 +86,14 @@ def index():
                          total_articles=total_articles,
                          total_ai_news=total_ai_news,
                          total_education_news=total_education_news,
-                         total_leidui_news=total_leidui_news,
+                         total_finance_news=total_finance_news,
                          total_cookies=total_cookies,
                          week_articles=week_articles,
                          week_ai_news=week_ai_news,
                          week_education_news=week_education_news,
-                         week_leidui_news=week_leidui_news,
+                         week_finance_news=week_finance_news,
                          favorite_education=favorite_education,
-                         recent_leidui_news=recent_leidui_news,
+                         recent_finance_news=recent_finance_news,
                          recent_ai_news=recent_ai_news,
                          recent_logs=recent_logs,
                          latest_report=latest_report)
@@ -106,7 +126,6 @@ def accounts():
                          pagination=pagination)
 
 @main_bp.route('/articles')
-@login_required
 def articles():
     """文章列表页面"""
     page = request.args.get('page', 1, type=int)
@@ -206,7 +225,6 @@ def articles():
                          current_type=content_type)
 
 @main_bp.route('/articles/<int:article_id>')
-@login_required
 def article_detail(article_id):
     """文章详情页面"""
     from flask import abort
@@ -240,7 +258,6 @@ def article_detail(article_id):
     abort(404)
 
 @main_bp.route('/ai-news')
-@login_required
 def ai_news():
     """AI资讯页面"""
     page = request.args.get('page', 1, type=int)
@@ -268,7 +285,6 @@ def ai_news():
                          keyword=keyword)
 
 @main_bp.route('/education')
-@login_required
 def education_news():
     """教育资讯页面"""
     page = request.args.get('page', 1, type=int)
@@ -309,55 +325,48 @@ def education_news():
                          keyword=keyword)
 
 @main_bp.route('/education/<int:news_id>')
-@login_required
 def education_news_detail(news_id):
     """教育资讯详情页面"""
     content = EducationContent.query.get_or_404(news_id)
-    # 标记为已读
-    ArticleStore.toggle_education_read(news_id)
+    # 标记为已读（仅登录用户）
+    if current_user.is_authenticated:
+        ArticleStore.toggle_education_read(news_id)
     return render_template('education/detail.html', content=content)
 
-@main_bp.route('/leidui')
-@login_required
-def leidui_news():
-    """雷递网投融资/财报页面"""
+@main_bp.route('/finance')
+def finance_news():
+    """投融资/财报页面（统一雷递网+投资界）"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     category = request.args.get('category')
     keyword = request.args.get('keyword')
     sort = request.args.get('sort', 'publish_date')
     
-    pagination = ArticleStore.get_leidui_contents(
+    pagination = ArticleStore.get_finance_contents(
         page=page, per_page=per_page, category=category, keyword=keyword, sort_by=sort
     )
     
-    # 获取分类统计
-    category_stats = db.session.query(
-        LeiduiContent.category,
-        db.func.count(LeiduiContent.id).label('count')
-    ).group_by(LeiduiContent.category).all()
-    
-    categories = [{'name': c[0] or '未分类', 'count': c[1]} for c in category_stats]
-    
-    return render_template('leidui/index.html',
+    return render_template('finance/index.html',
                          contents=pagination.items,
                          pagination=pagination,
-                         categories=categories,
                          current_category=category,
                          current_sort=sort,
                          keyword=keyword)
 
-@main_bp.route('/leidui/<int:content_id>')
-@login_required
-def leidui_news_detail(content_id):
-    """雷递网资讯详情页面"""
-    content = LeiduiContent.query.get_or_404(content_id)
-    # 标记为已读
-    ArticleStore.toggle_leidui_read(content_id)
-    return render_template('leidui/detail.html', content=content)
+@main_bp.route('/finance/<string:content_uid>')
+def finance_news_detail(content_uid):
+    """投融资/财报资讯详情页面"""
+    record, source_table = ArticleStore._get_finance_record(content_uid)
+    if not record:
+        from flask import abort
+        abort(404)
+    # 标记为已读（仅登录用户）
+    if current_user.is_authenticated:
+        ArticleStore.toggle_finance_read(content_uid)
+    data = ArticleStore._finance_to_dict(record, source_table)
+    return render_template('finance/detail.html', content=data)
 
 @main_bp.route('/reports')
-@login_required
 def reports():
     """周报列表页面"""
     page = request.args.get('page', 1, type=int)
@@ -372,7 +381,6 @@ def reports():
                          pagination=pagination)
 
 @main_bp.route('/reports/<int:report_id>')
-@login_required
 def report_detail(report_id):
     """周报详情页面"""
     report = WeeklyReport.query.get_or_404(report_id)
@@ -520,3 +528,10 @@ def settings():
 def permissions():
     """权限管理页面（仅超级管理员）"""
     return render_template('admin/permissions.html')
+
+
+@main_bp.route('/admin/education-companies')
+@require_permission('manage_settings')
+def education_companies():
+    """教育公司关键词管理页面（管理员可访问）"""
+    return render_template('admin/education_companies.html')

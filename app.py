@@ -125,6 +125,61 @@ def create_app(config_name=None):
     # 创建数据库表
     with app.app_context():
         db.create_all()
+        # 迁移：为已有的表添加缺失的列
+        from sqlalchemy import inspect, text
+        inspector = inspect(db.engine)
+
+        # 初始化默认周报设置（仅在不存在时）
+        from models import SystemConfig
+        if SystemConfig.get('weekly_report_day_of_week') is None:
+            SystemConfig.set('weekly_report_day_of_week', 'mon', '周报自动生成日（mon-sun）')
+            SystemConfig.set('weekly_report_hour', '9', '周报自动生成小时（0-23）')
+            SystemConfig.set('weekly_report_minute', '0', '周报自动生成分钟（0-59）')
+            SystemConfig.set('weekly_report_enabled', 'true', '是否自动生成周报')
+            app.logger.info('[Migration] Initialized default weekly report settings')
+        
+        # education_company 表：添加 category 列
+        if 'education_company' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('education_company')]
+            if 'category' not in columns:
+                db.session.execute(text("ALTER TABLE education_company ADD COLUMN category VARCHAR(30) NOT NULL DEFAULT 'education_company'"))
+                db.session.commit()
+                app.logger.info('[Migration] Added category column to education_company table')
+        
+        # leidui_content 表：添加 matched_keyword 列
+        if 'leidui_content' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('leidui_content')]
+            if 'matched_keyword' not in columns:
+                db.session.execute(text("ALTER TABLE leidui_content ADD COLUMN matched_keyword VARCHAR(200)"))
+                db.session.commit()
+                app.logger.info('[Migration] Added matched_keyword column to leidui_content table')
+        
+        # finance_content 表：添加 matched_keyword 列
+        if 'finance_content' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('finance_content')]
+            if 'matched_keyword' not in columns:
+                db.session.execute(text("ALTER TABLE finance_content ADD COLUMN matched_keyword VARCHAR(200)"))
+                db.session.commit()
+                app.logger.info('[Migration] Added matched_keyword column to finance_content table')
+
+        # 回填：为已有收藏但缺少 matched_keyword 的记录补充关键词
+        from core.report_generator import find_matching_education_company
+        try:
+            from models import LeiduiContent, FinanceContent
+            for model_class, label in [(LeiduiContent, '雷递网'), (FinanceContent, '投资界')]:
+                records = model_class.query.filter(
+                    model_class.is_favorite == True,
+                    model_class.matched_keyword.is_(None)
+                ).all()
+                if records:
+                    for r in records:
+                        matched = find_matching_education_company(r.title or '', r.summary or '')
+                        if matched:
+                            r.matched_keyword = matched
+                    db.session.commit()
+                    app.logger.info(f'[Backfill] 为 {label} {len(records)} 条收藏记录补充了匹配关键词')
+        except Exception as e:
+            app.logger.warning(f'[Backfill] matched_keyword 回填跳过: {e}')
     
     return app
 

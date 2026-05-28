@@ -349,6 +349,7 @@ class LeiduiContent(db.Model):
     publish_date = db.Column(db.DateTime)  # 发布时间
     is_read = db.Column(db.Boolean, default=False)  # 是否已读
     is_favorite = db.Column(db.Boolean, default=False)  # 是否收藏
+    matched_keyword = db.Column(db.String(200))  # 自动收藏时匹配到的关键词
     created_at = db.Column(db.DateTime, default=now_beijing)
     
     def __repr__(self):
@@ -369,8 +370,90 @@ class LeiduiContent(db.Model):
             'publish_date': self.publish_date.strftime('%Y-%m-%d') if self.publish_date else None,
             'is_read': self.is_read,
             'is_favorite': self.is_favorite,
+            'matched_keyword': self.matched_keyword,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None
         }
+
+
+class FinanceContent(db.Model):
+    """投融资/财报资讯（投资界等）"""
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(500), nullable=False)
+    url = db.Column(db.String(1000), unique=True, nullable=False)
+    source = db.Column(db.String(100), default='pedaily')
+    source_name = db.Column(db.String(100), default='投资界')
+    summary = db.Column(db.Text)
+    content = db.Column(db.Text)
+    cover_image = db.Column(db.String(500))
+    category = db.Column(db.String(50))  # 投融资/财报/IPO等
+    tags = db.Column(db.String(500))
+    author = db.Column(db.String(100))
+    publish_date = db.Column(db.DateTime)
+    publish_date_str = db.Column(db.String(100))
+    is_read = db.Column(db.Boolean, default=False)
+    is_favorite = db.Column(db.Boolean, default=False)
+    matched_keyword = db.Column(db.String(200))  # 自动收藏时匹配到的关键词
+    created_at = db.Column(db.DateTime, default=now_beijing)
+
+    def __repr__(self):
+        return f'<FinanceContent {self.title}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'url': self.url,
+            'source': self.source,
+            'source_name': self.source_name,
+            'summary': self.summary,
+            'cover_image': self.cover_image,
+            'category': self.category,
+            'tags': self.tags.split(',') if self.tags else [],
+            'author': self.author,
+            'publish_date': self.publish_date.strftime('%Y-%m-%d') if self.publish_date else None,
+            'publish_date_str': self.publish_date_str,
+            'is_read': self.is_read,
+            'is_favorite': self.is_favorite,
+            'matched_keyword': self.matched_keyword,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None
+        }
+
+
+class EducationCompany(db.Model):
+    """教育公司关键词（用于投融资/财报资讯筛选）
+
+    分类说明：
+    - education_company: 全球教育公司中英文名称
+    - other: 其他教育相关关键词
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    keyword = db.Column(db.String(200), unique=True, nullable=False)  # 关键词（支持中文/英文）
+    category = db.Column(db.String(30), default='education_company', nullable=False)  # 分类
+    created_at = db.Column(db.DateTime, default=now_beijing)
+
+    CATEGORY_LABELS = {
+        'education_company': '教育公司中英文名称',
+        'other': '其他教育相关关键词',
+    }
+
+    @classmethod
+    def get_category_label(cls, category):
+        """获取分类的显示名称（兼容旧数据NULL）"""
+        cat = category or 'education_company'
+        return cls.CATEGORY_LABELS.get(cat, cat)
+
+    def to_dict(self):
+        cat = self.category or 'education_company'
+        return {
+            'id': self.id,
+            'keyword': self.keyword,
+            'category': cat,
+            'category_label': self.CATEGORY_LABELS.get(cat, cat),
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None
+        }
+
+    def __repr__(self):
+        return f'<EducationCompany {self.keyword}>'
 
 
 class CrawlTaskConfig(db.Model):
@@ -414,3 +497,63 @@ class CrawlTaskConfig(db.Model):
     
     def __repr__(self):
         return f'<CrawlTaskConfig {self.task_name}>'
+
+
+class SystemConfig(db.Model):
+    """系统配置（键值对，持久化存储）"""
+    id = db.Column(db.Integer, primary_key=True)
+    config_key = db.Column(db.String(100), unique=True, nullable=False)
+    config_value = db.Column(db.Text, nullable=False)
+    description = db.Column(db.String(200))
+    updated_at = db.Column(db.DateTime, default=now_beijing, onupdate=now_beijing)
+
+    @staticmethod
+    def get(key, default=None):
+        """获取配置值"""
+        entry = SystemConfig.query.filter_by(config_key=key).first()
+        if entry is None:
+            return default
+        return entry.config_value
+
+    @staticmethod
+    def set(key, value, description=''):
+        """设置配置值（不存在则创建）"""
+        entry = SystemConfig.query.filter_by(config_key=key).first()
+        if entry is None:
+            entry = SystemConfig(config_key=key, config_value=str(value), description=description)
+            db.session.add(entry)
+        else:
+            entry.config_value = str(value)
+            if description:
+                entry.description = description
+        db.session.commit()
+
+    @staticmethod
+    def get_bool(key, default=False):
+        """获取布尔类型配置值"""
+        val = SystemConfig.get(key)
+        if val is None:
+            return default
+        return val.lower() in ('true', '1', 'yes')
+
+    @staticmethod
+    def get_int(key, default=0):
+        """获取整数类型配置值"""
+        val = SystemConfig.get(key)
+        if val is None:
+            return default
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return default
+
+    def to_dict(self):
+        return {
+            'key': self.config_key,
+            'value': self.config_value,
+            'description': self.description,
+            'updated_at': self.updated_at.strftime('%Y-%m-%d %H:%M:%S') if self.updated_at else None
+        }
+
+    def __repr__(self):
+        return f'<SystemConfig {self.config_key}={self.config_value}>'

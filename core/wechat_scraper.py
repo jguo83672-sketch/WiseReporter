@@ -188,21 +188,6 @@ class WechatArticleSpider:
         
         return list(set(images))[:10]  # 限制最多10张图片
     
-    def fetch_account_articles(self, biz: str, cookie: str = None, count: int = 20) -> List[Dict]:
-        """
-        获取公众号文章列表（通过 __biz 参数）
-
-        Args:
-            biz: 公众号biz标识（完整格式如：MzA5ODEzMjIyMA==）
-            cookie: 访问cookie字符串（可选，但建议提供）
-            count: 每次请求获取的文章数量，默认20
-
-        Returns:
-            文章列表
-        """
-        # 优先使用 profile_ext 接口获取文章列表
-        return self.fetch_articles_by_biz(biz, cookie, count)
-    
     def fetch_articles_by_sogou(self, account_name: str, count: int = 20) -> List[Dict]:
         """
         使用搜狗搜索获取公众号文章列表（推荐方案）
@@ -487,39 +472,6 @@ class WechatArticleSpider:
 
         return articles[:count]
 
-    def fetch_articles_batch(self, biz_list: List[str], cookie: str = None, count_per_account: int = 10) -> Dict[str, List[Dict]]:
-        """
-        批量获取多个公众号的文章列表
-
-        Args:
-            biz_list: biz标识列表
-            cookie: 访问cookie字符串
-            count_per_account: 每个公众号获取的文章数量
-
-        Returns:
-            字典，键为biz，值为文章列表
-        """
-        results = {}
-        total_accounts = len(biz_list)
-
-        print(f"[WechatArticleSpider] 开始批量采集 {total_accounts} 个公众号...")
-
-        for i, biz in enumerate(biz_list):
-            print(f"[WechatArticleSpider] 采集进度: {i+1}/{total_accounts} - {biz}")
-            try:
-                articles = self.fetch_articles_by_biz(biz, cookie, count_per_account)
-                results[biz] = articles
-                print(f"[WechatArticleSpider] {biz} 获取到 {len(articles)} 篇文章")
-            except Exception as e:
-                print(f"[WechatArticleSpider] {biz} 采集失败: {e}")
-                results[biz] = []
-
-            # 避免请求过快
-            if i < total_accounts - 1:
-                time.sleep(2)
-
-        print(f"[WechatArticleSpider] 批量采集完成，共 {total_accounts} 个公众号")
-        return results
 
     def _parse_appmsg_list(self, appmsg_list: List) -> List[Dict]:
         """解析 appmsg_list 数据"""

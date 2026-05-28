@@ -35,10 +35,14 @@
         
         <div class="content-actions">
             <a href="{{ content.url }}" target="_blank" class="btn btn-primary">阅读原文</a>
+            {% if current_user.is_authenticated %}
             <button onclick="toggleFavorite({{ content.id }})" class="btn {% if content.is_favorite %}btn-warning{% else %}btn-outline{% endif %}">
                 {{ '取消收藏' if content.is_favorite else '收藏' }}
             </button>
+            {% if current_user.has_permission('write_education') %}
             <button onclick="deleteNews({{ content.id }})" class="btn btn-danger">删除</button>
+            {% endif %}
+            {% endif %}
         </div>
     </article>
 </div>

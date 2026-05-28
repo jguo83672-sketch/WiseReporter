@@ -2,7 +2,7 @@
 权限控制装饰器模块
 """
 from functools import wraps
-from flask import jsonify, request, redirect, url_for, flash, render_template
+from flask import jsonify, request, redirect, url_for, flash
 from flask_login import current_user
 
 
@@ -16,7 +16,7 @@ PERMISSION_LABELS = {
     'write_articles': '文章管理',
     'write_ai_news': 'AI资讯管理',
     'write_education': '教育资讯管理',
-    'write_leidui': '投融资/财报管理',
+    'write_finance': '投融资/财报管理',
     'write_reports': '周报管理',
     'manage_crawl': '采集管理',
     'manage_settings': '系统设置',

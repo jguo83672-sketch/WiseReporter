@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import re
 import pytz
-from models import db, Article, AIContent, EducationContent, LeiduiContent, WeeklyReport, OfficialAccount, WechatContent
+from models import db, Article, AIContent, EducationContent, LeiduiContent, FinanceContent, WeeklyReport, OfficialAccount, WechatContent
 
 # 北京时区
 BEIJING_TZ = pytz.timezone('Asia/Shanghai')
@@ -159,15 +159,93 @@ EDUCATION_COMPANIES = [
 ]
 
 
+# 缓存：避免每次匹配都查数据库
+_edu_companies_cache = None
+_cache_timestamp = None
+_CACHE_TTL_SECONDS = 300  # 缓存5分钟
+
+
+def _get_education_company_keywords() -> list:
+    """获取教育公司关键词列表（优先数据库，兜底硬编码）"""
+    global _edu_companies_cache, _cache_timestamp
+    import time as _time
+    now = _time.time()
+    if _edu_companies_cache is not None and _cache_timestamp and (now - _cache_timestamp) < _CACHE_TTL_SECONDS:
+        return _edu_companies_cache
+
+    try:
+        from models import EducationCompany
+        keywords = [ec.keyword for ec in EducationCompany.query.order_by(EducationCompany.keyword).all()]
+        if keywords:
+            _edu_companies_cache = keywords
+            _cache_timestamp = now
+            return keywords
+    except Exception:
+        pass
+
+    # 兜底：使用硬编码列表（同时写入数据库以初始化）
+    return list(EDUCATION_COMPANIES)
+
+
+def invalidate_edu_companies_cache():
+    """使教育公司关键词缓存失效（关键词变更后调用）"""
+    global _edu_companies_cache, _cache_timestamp
+    _edu_companies_cache = None
+    _cache_timestamp = None
+
+
+def _is_english_keyword(keyword: str) -> bool:
+    """判断关键词是否包含英文字母（需要单词边界匹配避免误匹配）"""
+    return bool(re.search(r'[a-zA-Z]', keyword))
+
+
+def _match_keyword(keyword: str, text: str) -> bool:
+    """检查关键词是否在文本中出现。
+    - 英文关键词：使用单词边界 \b 防止 ACT 误匹配 impact、Paper 误匹配 newspaper
+    - 中文关键词：使用子串匹配（中文天然有分词边界）
+    """
+    if not text or not keyword:
+        return False
+    if _is_english_keyword(keyword):
+        # 单词边界匹配：\b 在 ASCII 单词和非 ASCII（如中文）之间也视为边界
+        pattern = r'(?<![a-zA-Z])' + re.escape(keyword) + r'(?![a-zA-Z])'
+        return bool(re.search(pattern, text, re.IGNORECASE))
+    else:
+        return keyword.lower() in text.lower()
+
+
+def _find_matched_keyword_in_text(keywords: list, text: str) -> str:
+    """在文本中查找第一个匹配的关键词，返回关键词文本。"""
+    if not text:
+        return ''
+    for company in keywords:
+        if _match_keyword(company, text):
+            return company
+    return ''
+
+
 def contains_education_company(text: str) -> bool:
     """检查文本是否包含全球知名教育公司名称（模块级函数，供多处复用）"""
     if not text:
         return False
-    text_lower = text.lower()
-    for company in EDUCATION_COMPANIES:
-        if company.lower() in text_lower:
-            return True
-    return False
+    keywords = _get_education_company_keywords()
+    return bool(_find_matched_keyword_in_text(keywords, text))
+
+
+def find_matching_education_company(*texts: str) -> str:
+    """在给定文本中查找匹配的教育公司关键词，返回匹配到的第一个关键词。
+    未匹配到时返回空字符串。
+    
+    Args:
+        *texts: 待检查的文本（title, summary, content 等）
+    """
+    if not texts:
+        return ''
+    combined = ' '.join(t for t in texts if t)
+    if not combined:
+        return ''
+    keywords = _get_education_company_keywords()
+    return _find_matched_keyword_in_text(keywords, combined)
 
 
 class WeeklyReportGenerator:
@@ -210,9 +288,10 @@ class WeeklyReportGenerator:
         ai_news = self._collect_ai_news(start_date, end_date)
         edu_news = self._collect_edu_news(start_date, end_date)
         leidui_news = self._collect_leidui_news(start_date, end_date)
+        finance_news = self._collect_finance_news(start_date, end_date)
         
         # 生成内容
-        content = self._generate_content(articles, ai_news, edu_news, leidui_news)
+        content = self._generate_content(articles, ai_news, edu_news, leidui_news, finance_news)
         
         # 生成标题
         title = f"教育行业周报 {start_date.strftime('%Y年%m月%d日')} - {end_date.strftime('%Y年%m月%d日')}"
@@ -344,78 +423,94 @@ class WeeklyReportGenerator:
             LeiduiContent.publish_date <= end_date,
             LeiduiContent.is_favorite == True
         ).order_by(LeiduiContent.publish_date.desc()).all()
+
+    def _collect_finance_news(self, start_date: datetime,
+                               end_date: datetime) -> List[FinanceContent]:
+        """收集周期内已被收藏的投融资/财报资讯（投资界等）"""
+        return FinanceContent.query.filter(
+            FinanceContent.publish_date >= start_date,
+            FinanceContent.publish_date <= end_date,
+            FinanceContent.is_favorite == True
+        ).order_by(FinanceContent.publish_date.desc()).all()
     
     def _collect_important_titles(self, articles: List[dict],
                                    ai_news: List[AIContent],
                                    edu_news: List[EducationContent],
-                                   leidui_news: List[LeiduiContent]) -> List[dict]:
+                                   leidui_news: List[LeiduiContent],
+                                   finance_news: List[FinanceContent] = None) -> List[dict]:
         """收集最重要的资讯标题（筛选过的核心内容）"""
         result = []
-        
-        # 教育资讯：收藏的文章都是重点，全部列出（最多8条）
-        for news in edu_news[:8]:
+
+        if finance_news is None:
+            finance_news = []
+
+        # 教育资讯：收藏的文章都是重点，全部列出（最多6条）
+        for news in edu_news[:6]:
             result.append({
                 'title': news.title,
                 'url': news.url or '#',
                 'source': news.source_name or news.source or '教育资讯',
             })
-        
-        # AI资讯：产品/模型发布（最多5条）
-        for news in ai_news[:5]:
+
+        # AI资讯：产品/模型发布（最多4条）
+        for news in ai_news[:4]:
             result.append({
                 'title': news.title,
                 'url': news.url or '#',
                 'source': 'AI前沿',
             })
-        
-        # 投融资：教育公司相关（最多5条）
-        filtered_leidui = [n for n in leidui_news 
-                          if self._contains_education_company(n.title or '') 
-                          or self._contains_education_company(n.summary or '')]
-        for news in filtered_leidui[:5]:
+
+        # 投融资：合并雷递网 + 投资界（最多5条）
+        all_finance = list(leidui_news) + list(finance_news)
+        all_finance.sort(key=lambda x: x.publish_date or datetime(1900, 1, 1), reverse=True)
+        for news in all_finance[:5]:
             result.append({
                 'title': news.title,
                 'url': news.url or '#',
                 'source': '投融资',
             })
-        
-        # 公众号：重点推荐（最多5条）
+
+        # 公众号：重点推荐（最多3条）
         important_articles = [a for a in articles if a.get('is_important')]
-        for article in important_articles[:5]:
+        for article in important_articles[:3]:
             result.append({
                 'title': article.get('title', ''),
                 'url': article.get('url', '#'),
                 'source': article.get('account_name', '公众号'),
             })
-        
+
         # 去重（按标题相似度），保留总数不超过20条
         seen_titles = set()
         unique_result = []
         for item in result:
-            # 简单去重：取标题前30字符
             key = item['title'][:30].strip()
             if key and key not in seen_titles:
                 seen_titles.add(key)
                 unique_result.append(item)
-        
+
         return unique_result[:15]
     
     def _generate_weekly_overview(self, articles: List[dict],
                                    ai_news: List[AIContent],
                                    edu_news: List[EducationContent],
-                                   leidui_news: List[LeiduiContent]) -> str:
+                                   leidui_news: List[LeiduiContent],
+                                   finance_news: List[FinanceContent] = None) -> str:
         """使用AI生成周报摘要"""
         # 收集关键信息用于生成摘要
         context_parts = []
+
+        if finance_news is None:
+            finance_news = []
         
         # 教育资讯
         if edu_news:
             edu_titles = [f"· {n.title}" for n in edu_news[:10]]
             context_parts.append(f"本周教育领域重点资讯：\n" + "\n".join(edu_titles))
         
-        # 投融资
-        if leidui_news:
-            lei_titles = [f"· {n.title}" for n in leidui_news[:5]]
+        # 投融资（合并雷递网 + 投资界）
+        all_finance = list(leidui_news) + list(finance_news)
+        if all_finance:
+            lei_titles = [f"· {n.title}" for n in all_finance[:8]]
             context_parts.append(f"投融资/财报动态：\n" + "\n".join(lei_titles))
         
         # AI资讯
@@ -451,38 +546,46 @@ class WeeklyReportGenerator:
             from flask import current_app
             api_key = current_app.config.get('OPENROUTER_API_KEY', '')
             base_url = current_app.config.get('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
-            model = current_app.config.get('AI_SUMMARY_MODEL', 'baidu/cobuddy:free')
+            models = current_app.config.get('AI_SUMMARY_MODELS', ['qwen/qwen3-next-80b-a3b-instruct:free'])
         except RuntimeError:
             # 兜底：尝试从 config 模块读取
             try:
                 from config import Config
                 api_key = Config.OPENROUTER_API_KEY or ''
                 base_url = getattr(Config, 'OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
-                model = getattr(Config, 'AI_SUMMARY_MODEL', 'baidu/cobuddy:free')
+                models = getattr(Config, 'AI_SUMMARY_MODELS', ['qwen/qwen3-next-80b-a3b-instruct:free'])
             except:
                 api_key = ''
                 base_url = 'https://openrouter.ai/api/v1'
-                model = 'baidu/cobuddy:free'
+                models = ['qwen/qwen3-next-80b-a3b-instruct:free']
         
         if not api_key:
             return ''
         
-        try:
-            from openai import OpenAI
-            client = OpenAI(base_url=base_url, api_key=api_key)
-            response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                max_tokens=800,
-            )
-            summary = response.choices[0].message.content
-            if summary:
-                return summary.strip()
-            return ''
-        except Exception as e:
-            print(f"[周报摘要] AI生成失败: {e}")
-            return ''
+        import time as _time
+        from openai import OpenAI
+        client = OpenAI(base_url=base_url, api_key=api_key)
+        for i, m in enumerate(models):
+            try:
+                response = client.chat.completions.create(
+                    model=m,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                    max_tokens=800,
+                )
+                summary = response.choices[0].message.content
+                if summary and summary.strip():
+                    if i > 0:
+                        print(f"[周报摘要] 降级后使用模型 {m} 成功")
+                    return summary.strip()
+                print(f"[周报摘要] 模型 {m} 返回空内容")
+            except Exception as e:
+                if i < len(models) - 1:
+                    print(f"[周报摘要] 模型 {m} 失败，尝试下一个: {e}")
+                    _time.sleep(1)
+                else:
+                    print(f"[周报摘要] 所有模型均失败，最后一个错误: {e}")
+        return ''
     
     def _format_date(self, dt) -> str:
         """安全格式化日期"""
@@ -503,15 +606,19 @@ class WeeklyReportGenerator:
     def _generate_content(self, articles: List[dict], 
                          ai_news: List[AIContent],
                          edu_news: List[EducationContent],
-                         leidui_news: List[LeiduiContent]) -> str:
+                         leidui_news: List[LeiduiContent],
+                         finance_news: List[FinanceContent] = None) -> str:
         """生成周报内容（HTML格式）"""
+        if finance_news is None:
+            finance_news = []
+
         period_str = f"{self.period_start.strftime('%Y.%m.%d')} - {self.period_end.strftime('%Y.%m.%d')}"
         
         # 收集重要资讯标题
-        important_titles = self._collect_important_titles(articles, ai_news, edu_news, leidui_news)
+        important_titles = self._collect_important_titles(articles, ai_news, edu_news, leidui_news, finance_news)
         
         # 生成AI周报摘要
-        weekly_summary = self._generate_weekly_overview(articles, ai_news, edu_news, leidui_news)
+        weekly_summary = self._generate_weekly_overview(articles, ai_news, edu_news, leidui_news, finance_news)
         
         # 构建重点关注标题列表HTML
         highlights_html = ''
@@ -556,7 +663,7 @@ class WeeklyReportGenerator:
             </div>
             <div class="wr-stat-divider"></div>
             <div class="wr-stat-item">
-                <span class="wr-stat-num">{len(leidui_news)}</span>
+                <span class="wr-stat-num">{len(leidui_news) + len(finance_news)}</span>
                 <span class="wr-stat-label">投融资</span>
             </div>
             <div class="wr-stat-divider"></div>
@@ -653,36 +760,42 @@ class WeeklyReportGenerator:
 '''
         
         # === 投融资/财报 ===
-        if leidui_news:
+        # 合并雷递网 + 投资界数据，按发布时间排序
+        all_finance = list(leidui_news)
+        for fn in finance_news:
+            all_finance.append(fn)
+        all_finance.sort(key=lambda x: x.publish_date or datetime(1900, 1, 1), reverse=True)
+
+        if all_finance:
             html += f'''
     <div class="wr-section">
         <div class="wr-section-header">
             <span class="wr-section-num">03</span>
             <h2 class="wr-section-title">投融资 / 财报动态</h2>
-            <span class="wr-section-count">{len(leidui_news)} 条</span>
+            <span class="wr-section-count">{len(all_finance)} 条</span>
         </div>
         <div class="wr-article-list">
 '''
-            # 按分类分组
-            lei_by_category = {}
-            for news in leidui_news:
-                cat = news.category or '行业动态'
-                if cat not in lei_by_category:
-                    lei_by_category[cat] = []
-                lei_by_category[cat].append(news)
-            
-            for cat_name, news_list in lei_by_category.items():
+            # 按来源分组
+            finance_by_source = {}
+            for news in all_finance:
+                sname = getattr(news, 'source_name', '') or getattr(news, 'source', '') or '其他'
+                if sname not in finance_by_source:
+                    finance_by_source[sname] = []
+                finance_by_source[sname].append(news)
+
+            for sname, news_list in finance_by_source.items():
                 html += f'''
             <div class="wr-subsection">
-                <h3 class="wr-subsection-title">{cat_name}</h3>
+                <h3 class="wr-subsection-title">{sname}</h3>
 '''
                 for news in news_list[:15]:
                     html += self._render_article_card(
                         title=news.title,
                         url=news.url,
-                        summary=news.summary,
+                        summary=getattr(news, 'summary', ''),
                         publish_date=news.publish_date,
-                        source=news.source_name or '雷递网',
+                        source=sname,
                         source_type='leidui'
                     )
                 html += '''
@@ -817,12 +930,6 @@ class WeeklyReportGenerator:
                 </div>'''
     
     @staticmethod
-    def convert_to_html(content: str) -> str:
-        """将周报内容转换为完整HTML页面（用于导出）"""
-        # content已经是HTML格式，直接包裹
-        return content
-    
-    @staticmethod
     def convert_to_markdown(content: str) -> str:
         """将HTML内容转换为纯文本摘要（用于Markdown导出）"""
         # 简单的HTML转文本
@@ -838,13 +945,6 @@ class WeeklyReportGenerator:
             report.status = 'published'
             db.session.commit()
         return report
-    
-    @staticmethod
-    def get_latest_report() -> Optional[WeeklyReport]:
-        """获取最新周报"""
-        return WeeklyReport.query.order_by(
-            WeeklyReport.report_date.desc()
-        ).first()
     
     @staticmethod
     def get_reports(limit: int = 10) -> List[WeeklyReport]:
