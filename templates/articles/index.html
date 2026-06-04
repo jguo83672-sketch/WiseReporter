@@ -14,28 +14,11 @@
     <form method="get" class="filter-form" id="filterForm">
         <div class="filter-row">
             <div class="filter-group">
-                <label>类型：</label>
-                <select name="type" onchange="document.getElementById('filterForm').submit()">
-                    <option value="all" {% if current_type == 'all' %}selected{% endif %}>全部</option>
-                    <option value="wechat" {% if current_type == 'wechat' %}selected{% endif %}>公众号</option>
-                    <option value="article" {% if current_type == 'article' %}selected{% endif %}>本地文章</option>
-                </select>
-            </div>
-            <div class="filter-group">
                 <label>公众号：</label>
-                <select name="account_id" onchange="document.getElementById('filterForm').submit()">
+                <select name="account_name" onchange="document.getElementById('filterForm').submit()">
                     <option value="">全部公众号</option>
-                    {% for acc in all_accounts %}
-                    <option value="{{ acc.id }}" {% if current_account_id == acc.id %}selected{% endif %}>{{ acc.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="filter-group">
-                <label>分类：</label>
-                <select name="category" onchange="document.getElementById('filterForm').submit()">
-                    <option value="">全部分类</option>
-                    {% for cat in categories %}
-                    <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% for name in account_names %}
+                    <option value="{{ name }}" {% if current_account_name == name %}selected{% endif %}>{{ name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -44,7 +27,7 @@
                 <input type="text" name="keyword" placeholder="搜索标题/摘要" value="{{ keyword or '' }}">
                 <button type="submit" class="btn btn-sm btn-primary">搜索</button>
                 {% if keyword %}
-                <a href="{{ url_for('main.articles', account_id=current_account_id, category=current_category, type=current_type) }}" class="btn btn-sm">清除</a>
+                <a href="{{ url_for('main.articles', account_name=current_account_name) }}" class="btn btn-sm">清除</a>
                 {% endif %}
             </div>
         </div>
@@ -120,27 +103,14 @@
 
 {% if pagination.pages > 1 %}
 <div class="pagination">
-    {% if pagination.has_prev %}
-    <a href="{{ url_for('main.articles', page=pagination.prev_num, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">上一页</a>
+    {% if pagination.page > 1 %}
+    <a href="{{ url_for('main.articles', page=pagination.page-1, keyword=keyword, account_name=current_account_name) }}" class="page-link">上一页</a>
     {% endif %}
     
-    {% set start_page = 1 %}
-    {% set end_page = pagination.pages %}
-    {% if pagination.pages > 7 %}
-        {% if pagination.page <= 4 %}
-            {% set start_page = 1 %}
-            {% set end_page = 7 %}
-        {% elif pagination.page >= pagination.pages - 3 %}
-            {% set start_page = pagination.pages - 6 %}
-            {% set end_page = pagination.pages %}
-        {% else %}
-            {% set start_page = pagination.page - 3 %}
-            {% set end_page = pagination.page + 3 %}
-        {% endif %}
-    {% endif %}
-    
+    {% set start_page = [1, pagination.page - 3]|max %}
+    {% set end_page = [pagination.pages, pagination.page + 3]|min %}
     {% if start_page > 1 %}
-    <a href="{{ url_for('main.articles', page=1, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">1</a>
+    <a href="{{ url_for('main.articles', page=1, keyword=keyword, account_name=current_account_name) }}" class="page-link">1</a>
     {% if start_page > 2 %}<span class="page-ellipsis">...</span>{% endif %}
     {% endif %}
     
@@ -148,17 +118,17 @@
         {% if p == pagination.page %}
         <span class="page-link active">{{ p }}</span>
         {% else %}
-        <a href="{{ url_for('main.articles', page=p, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">{{ p }}</a>
+        <a href="{{ url_for('main.articles', page=p, keyword=keyword, account_name=current_account_name) }}" class="page-link">{{ p }}</a>
         {% endif %}
     {% endfor %}
     
     {% if end_page < pagination.pages %}
     {% if end_page < pagination.pages - 1 %}<span class="page-ellipsis">...</span>{% endif %}
-    <a href="{{ url_for('main.articles', page=pagination.pages, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">{{ pagination.pages }}</a>
+    <a href="{{ url_for('main.articles', page=pagination.pages, keyword=keyword, account_name=current_account_name) }}" class="page-link">{{ pagination.pages }}</a>
     {% endif %}
     
-    {% if pagination.has_next %}
-    <a href="{{ url_for('main.articles', page=pagination.next_num, keyword=keyword, account_id=current_account_id, category=current_category) }}" class="page-link">下一页</a>
+    {% if pagination.page < pagination.pages %}
+    <a href="{{ url_for('main.articles', page=pagination.page+1, keyword=keyword, account_name=current_account_name) }}" class="page-link">下一页</a>
     {% endif %}
 </div>
 {% endif %}

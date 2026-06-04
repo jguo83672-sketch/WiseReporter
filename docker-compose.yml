@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: wisereporter
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_CONFIG=production
+      - SECRET_KEY=${SECRET_KEY:-wise-reporter-secret-key-change-me}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///instance/wisereporter.db}
+      - COZE_API_TOKEN=${COZE_API_TOKEN:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - TZ=Asia/Shanghai
+    volumes:
+      # 持久化数据库文件
+      - ./instance:/app/instance
+      # 持久化日志
+      - ./logs:/app/logs
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/auth/login')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # 可选：使用 PostgreSQL 替代 SQLite
+  # db:
+  #   image: postgres:15-alpine
+  #   container_name: wisereporter-db
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_USER=wisereporter
+  #     - POSTGRES_PASSWORD=${DB_PASSWORD:-changeme}
+  #     - POSTGRES_DB=wisereporter
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+# volumes:
+#   pgdata:

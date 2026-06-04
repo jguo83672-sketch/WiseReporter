@@ -3,7 +3,7 @@
 """
 from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_required, current_user
-from models import db, OfficialAccount, Article, AIContent, EducationContent, WeeklyReport, CookiePool, CrawlLog, WechatContent, LeiduiContent, FinanceContent
+from models import db, OfficialAccount, AIContent, EducationContent, WeeklyReport, CookiePool, CrawlLog, WechatContent, LeiduiContent, FinanceContent
 from core.data_store import ArticleStore
 from core.decorators import write_required, super_admin_required, require_permission, PERMISSION_LABELS
 from datetime import datetime, timedelta
@@ -22,7 +22,7 @@ def index():
     # 统计信息
     total_accounts = OfficialAccount.query.count()
     active_accounts = OfficialAccount.query.filter_by(is_active=True).count()
-    total_articles = Article.query.count()
+    total_articles = WechatContent.query.count()
     total_ai_news = AIContent.query.count()
     total_education_news = EducationContent.query.count()
     total_finance_news = LeiduiContent.query.count() + FinanceContent.query.count()
@@ -30,7 +30,7 @@ def index():
     
     # 最近一周的数据（使用北京时间）
     week_ago = datetime.now(BEIJING_TZ) - timedelta(days=7)
-    week_articles = Article.query.filter(Article.created_at >= week_ago).count()
+    week_articles = WechatContent.query.filter(WechatContent.created_at >= week_ago).count()
     week_ai_news = AIContent.query.filter(AIContent.created_at >= week_ago).count()
     week_education_news = EducationContent.query.filter(EducationContent.created_at >= week_ago).count()
     week_finance_news = LeiduiContent.query.filter(LeiduiContent.created_at >= week_ago).count() + FinanceContent.query.filter(FinanceContent.created_at >= week_ago).count()
@@ -127,25 +127,16 @@ def accounts():
 
 @main_bp.route('/articles')
 def articles():
-    """文章列表页面"""
+    """文章列表页面（微信公众号文章）"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    category = request.args.get('category')
-    account_id = request.args.get('account_id', type=int)
+    account_name = request.args.get('account_name')
     keyword = request.args.get('keyword')
-    content_type = request.args.get('type', 'all')  # all, wechat, article
-    
-    # 查询Article表
-    article_query = Article.query
-    if category:
-        article_query = article_query.filter(Article.category == category)
-    if account_id:
-        article_query = article_query.filter(Article.account_id == account_id)
-    if keyword:
-        article_query = article_query.filter(Article.title.contains(keyword) | Article.summary.contains(keyword))
     
     # 查询WechatContent表
     wechat_query = WechatContent.query
+    if account_name:
+        wechat_query = wechat_query.filter(WechatContent.account_name == account_name)
     if keyword:
         wechat_query = wechat_query.filter(
             WechatContent.title.contains(keyword) | 
@@ -153,38 +144,13 @@ def articles():
             WechatContent.content.contains(keyword)
         )
     
-    # 根据类型过滤（按发布日期排序，最新在前）
-    articles_list = []
-    if content_type == 'all':
-        # 合并两个表的数据
-        articles_list = article_query.order_by(Article.publish_date.desc().nullslast()).all()
-        wechat_list = wechat_query.order_by(WechatContent.publish_date.desc().nullslast()).all()
-    elif content_type == 'wechat':
-        articles_list = []
-        wechat_list = wechat_query.order_by(WechatContent.publish_date.desc().nullslast()).all()
-    else:
-        articles_list = article_query.order_by(Article.publish_date.desc().nullslast()).all()
-        wechat_list = []
+    pagination = wechat_query.order_by(
+        WechatContent.publish_date.desc().nullslast()
+    ).paginate(page=page, per_page=per_page, error_out=False)
     
-    # 合并并排序
+    # 转换为字典列表
     all_articles = []
-    for a in articles_list:
-        all_articles.append({
-            'id': a.id,
-            'title': a.title,
-            'url': a.url,
-            'author': a.author,
-            'summary': a.summary,
-            'publish_date': a.publish_date,
-            'category': a.category,
-            'account_name': a.account.name if a.account else None,
-            'account_id': a.account_id,
-            'is_important': a.is_important,
-            'created_at': a.created_at,
-            'content_type': 'article'
-        })
-    
-    for w in wechat_list:
+    for w in pagination.items:
         all_articles.append({
             'id': w.id,
             'title': w.title,
@@ -194,68 +160,48 @@ def articles():
             'publish_date': w.publish_date,
             'category': w.tags,
             'account_name': w.account_name,
-            'account_id': None,
-            'is_important': False,
+            'is_important': getattr(w, 'is_favorite', False),
             'created_at': w.created_at,
             'content_type': 'wechat'
         })
     
-    # 按发布时间排序（最新在前，无发布日期的排在最后）
-    all_articles.sort(key=lambda x: x['publish_date'] or datetime.min.replace(year=1900), reverse=True)
-    
-    # 分页
-    total = len(all_articles)
-    start = (page - 1) * per_page
-    end = start + per_page
-    paginated_articles = all_articles[start:end]
-    
-    # 获取所有公众号用于筛选
-    all_accounts = OfficialAccount.query.all()
-    categories = db.session.query(Article.category).distinct().all()
-    categories = [c[0] for c in categories if c[0]]
+    # 获取所有公众号账号名称用于筛选
+    account_names = db.session.query(WechatContent.account_name).filter(
+        WechatContent.account_name.isnot(None),
+        WechatContent.account_name != ''
+    ).distinct().order_by(WechatContent.account_name).all()
+    account_names = [a[0] for a in account_names]
     
     return render_template('articles/index.html',
-                         articles=paginated_articles,
-                         pagination={'page': page, 'per_page': per_page, 'total': total, 'pages': (total + per_page - 1) // per_page},
-                         all_accounts=all_accounts,
-                         categories=categories,
-                         current_category=category,
-                         current_account_id=account_id,
-                         keyword=keyword,
-                         current_type=content_type)
+                         articles=all_articles,
+                         pagination={'page': pagination.page, 'per_page': pagination.per_page, 
+                                    'total': pagination.total, 'pages': pagination.pages},
+                         account_names=account_names,
+                         current_account_name=account_name,
+                         keyword=keyword)
 
 @main_bp.route('/articles/<int:article_id>')
 def article_detail(article_id):
     """文章详情页面"""
     from flask import abort
     
-    # 尝试从Article表获取
-    article = Article.query.get(article_id)
-    if article:
-        return render_template('articles/detail.html', article=article)
-    
-    # 尝试从WechatContent表获取
-    wechat = WechatContent.query.get(article_id)
-    if wechat:
-        # 将WechatContent转换为类似Article的结构
-        article_dict = {
-            'id': wechat.id,
-            'title': wechat.title,
-            'url': wechat.url,
-            'author': wechat.author,
-            'summary': wechat.summary,
-            'content': wechat.content,
-            'publish_date': wechat.publish_date,
-            'category': wechat.tags,
-            'account_name': wechat.account_name,
-            'account_id': None,
-            'is_important': False,
-            'created_at': wechat.created_at,
-            'content_type': 'wechat'
-        }
-        return render_template('articles/detail.html', article=article_dict)
-    
-    abort(404)
+    # 从WechatContent表获取
+    wechat = WechatContent.query.get_or_404(article_id)
+    article_dict = {
+        'id': wechat.id,
+        'title': wechat.title,
+        'url': wechat.url,
+        'author': wechat.author,
+        'summary': wechat.summary,
+        'content': wechat.content,
+        'publish_date': wechat.publish_date,
+        'category': wechat.tags,
+        'account_name': wechat.account_name,
+        'is_important': False,
+        'created_at': wechat.created_at,
+        'content_type': 'wechat'
+    }
+    return render_template('articles/detail.html', article=article_dict)
 
 @main_bp.route('/ai-news')
 def ai_news():

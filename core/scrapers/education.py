@@ -482,7 +482,10 @@ class DuozhiScraper(BaseScraper):
 
                     if url in existing_urls:
                         skipped_duplicates += 1
-                        print(f"[多知网] 跳过重复: {article_data.get('title', '')[:30]}...")
+                        print(f"[多知网] 跳过重复({skipped_duplicates}): {article_data.get('title', '')[:30]}...")
+                        if skipped_duplicates >= 3:
+                            print(f"[多知网] 连续遇到 {skipped_duplicates} 篇重复，停止爬取")
+                            break
                         continue
 
                     print(f"[多知网] 详情页: {article_data.get('title', '')[:40]}...")
@@ -504,6 +507,11 @@ class DuozhiScraper(BaseScraper):
                     time.sleep(random.uniform(1, 2))
 
                 print(f"[多知网] 第 {page} 页完成: 采集{page_count}篇")
+
+                # 累计重复超过3篇，停止翻页
+                if skipped_duplicates >= 3:
+                    print(f"[多知网] 累计跳过 {skipped_duplicates} 篇重复，停止翻页")
+                    break
 
                 if len(page_articles) < 10:
                     print(f"[多知网] 文章数量少于10篇，可能已到尾页")

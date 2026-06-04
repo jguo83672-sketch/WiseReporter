@@ -78,8 +78,6 @@ class OfficialAccount(db.Model):
     created_at = db.Column(db.DateTime, default=now_beijing)
     updated_at = db.Column(db.DateTime, default=now_beijing, onupdate=now_beijing)
     
-    articles = db.relationship('Article', backref='account', lazy='dynamic')
-    
     def to_dict(self):
         return {
             'id': self.id,
@@ -126,42 +124,6 @@ class WechatCredential(db.Model):
             'failure_count': self.failure_count,
             'last_used': self.last_used.strftime('%Y-%m-%d %H:%M') if self.last_used else None,
             'expires_at': self.expires_at.strftime('%Y-%m-%d %H:%M') if self.expires_at else None,
-            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None
-        }
-
-class Article(db.Model):
-    """文章表"""
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(500), nullable=False)
-    url = db.Column(db.String(1000), unique=True, nullable=False)
-    author = db.Column(db.String(200))
-    summary = db.Column(db.Text)  # 摘要
-    content = db.Column(db.Text)  # 完整内容
-    publish_date = db.Column(db.DateTime)
-    category = db.Column(db.String(50))  # 文章分类
-    tags = db.Column(db.String(500))  # 标签，逗号分隔
-    view_count = db.Column(db.Integer, default=0)
-    like_count = db.Column(db.Integer, default=0)
-    is_important = db.Column(db.Boolean, default=False)  # 是否重要
-    account_id = db.Column(db.Integer, db.ForeignKey('official_account.id'))
-    created_at = db.Column(db.DateTime, default=now_beijing)
-    updated_at = db.Column(db.DateTime, default=now_beijing, onupdate=now_beijing)
-    
-    def __repr__(self):
-        return f'<Article {self.title}>'
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'title': self.title,
-            'url': self.url,
-            'author': self.author,
-            'summary': self.summary,
-            'publish_date': self.publish_date.strftime('%Y-%m-%d') if self.publish_date else None,
-            'category': self.category,
-            'tags': self.tags.split(',') if self.tags else [],
-            'account_name': self.account.name if self.account else None,
-            'is_important': self.is_important,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M') if self.created_at else None
         }
 

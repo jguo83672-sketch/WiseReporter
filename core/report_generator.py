@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import re
 import pytz
-from models import db, Article, AIContent, EducationContent, LeiduiContent, FinanceContent, WeeklyReport, OfficialAccount, WechatContent
+from models import db, AIContent, EducationContent, LeiduiContent, FinanceContent, WeeklyReport, OfficialAccount, WechatContent
 
 # 北京时区
 BEIJING_TZ = pytz.timezone('Asia/Shanghai')
@@ -313,18 +313,6 @@ class WeeklyReportGenerator:
         
         return report
     
-    def _unify_article(self, article: Article) -> dict:
-        """将 Article 对象转为统一格式"""
-        return {
-            'title': article.title,
-            'url': article.url,
-            'author': article.author or '',
-            'summary': article.summary or '',
-            'publish_date': article.publish_date,
-            'account_name': article.account.name if article.account else '未知来源',
-            'is_important': getattr(article, 'is_important', False),
-        }
-    
     def _unify_wechat(self, wechat: WechatContent) -> dict:
         """将 WechatContent 对象转为统一格式"""
         return {
@@ -334,24 +322,16 @@ class WeeklyReportGenerator:
             'summary': wechat.summary or '',
             'publish_date': wechat.publish_date,
             'account_name': wechat.account_name or '未知来源',
+            'category': '未分类',  # 下面会通过_attach_categories批量填充
             'is_important': getattr(wechat, 'is_favorite', False),
         }
     
     def _collect_articles(self, start_date: datetime, 
                          end_date: datetime) -> List[dict]:
-        """收集周期内的公众号文章（按发布时间筛选，同时收集Article和WechatContent）"""
+        """收集周期内的公众号文章（按发布时间筛选）"""
         result = []
         
-        # 收集 Article 表（关联 OfficialAccount 的文章）
-        article_records = Article.query.filter(
-            Article.publish_date >= start_date,
-            Article.publish_date <= end_date
-        ).order_by(Article.publish_date.desc()).all()
-        
-        for a in article_records:
-            result.append(self._unify_article(a))
-        
-        # 收集 WechatContent 表（独立爬取的公众号文章）
+        # 收集 WechatContent 表
         wechat_records = WechatContent.query.filter(
             WechatContent.publish_date >= start_date,
             WechatContent.publish_date <= end_date
@@ -360,10 +340,44 @@ class WeeklyReportGenerator:
         for w in wechat_records:
             result.append(self._unify_wechat(w))
         
+        # 批量填充公众号分类
+        self._attach_categories(result)
+        
         # 按发布日期排序（最新在前，无日期的排在最后）
         result.sort(key=lambda x: x['publish_date'] or datetime(1900, 1, 1), reverse=True)
         
         return result
+    
+    def _attach_categories(self, articles: List[dict]):
+        """为统一格式的文章批量查找并附加公众号分类"""
+        # 收集需要查分类的公众号名称（仅未分类的）
+        names_to_lookup = set()
+        for a in articles:
+            if a.get('category', '未分类') == '未分类' and a.get('account_name') and a['account_name'] != '未知来源':
+                names_to_lookup.add(a['account_name'])
+        
+        if not names_to_lookup:
+            return
+        
+        # 批量查询 OfficialAccount，构建 name->category 映射
+        try:
+            accounts = OfficialAccount.query.filter(
+                OfficialAccount.name.in_(names_to_lookup)
+            ).all()
+            
+            name_category_map = {}
+            for acc in accounts:
+                if acc.category:
+                    name_category_map[acc.name] = acc.category
+            
+            # 附加分类
+            for a in articles:
+                if a.get('category', '未分类') == '未分类':
+                    cat = name_category_map.get(a.get('account_name', ''))
+                    if cat:
+                        a['category'] = cat
+        except Exception:
+            pass  # 查不到就保留"未分类"
     
     def _contains_education_company(self, text: str) -> bool:
         """检查文本是否包含教育公司名称"""
@@ -808,13 +822,16 @@ class WeeklyReportGenerator:
         
         # === 公众号动态 ===
         if articles:
-            # 按公众号分组（统一格式使用 account_name 字段）
-            account_articles = {}
+            # 按公众号分类分组
+            category_articles = {}
             for article in articles:
-                account_name = article['account_name'] or '未知来源'
-                if account_name not in account_articles:
-                    account_articles[account_name] = []
-                account_articles[account_name].append(article)
+                cat = article.get('category', '未分类') or '未分类'
+                if cat not in category_articles:
+                    category_articles[cat] = []
+                category_articles[cat].append(article)
+            
+            # 定义分类展示顺序：行业动态、竞品公司动态在前
+            category_order = ['行业动态', '竞品公司动态', '投融资', 'AI资讯', '产品运营', '技术分享', '教育资讯', '其他', '未分类']
             
             html += f'''
     <div class="wr-section">
@@ -838,12 +855,16 @@ class WeeklyReportGenerator:
             </div>
 '''
             
-            for account_name, account_article_list in account_articles.items():
+            # 按分类顺序展示
+            for cat in category_order:
+                if cat not in category_articles:
+                    continue
+                articles_in_cat = category_articles[cat]
                 html += f'''
             <div class="wr-subsection">
-                <h3 class="wr-subsection-title">{account_name}</h3>
+                <h3 class="wr-subsection-title">{cat}</h3>
 '''
-                for article in account_article_list[:10]:
+                for article in articles_in_cat[:15]:
                     html += self._render_account_article_card(article)
                 html += '''
             </div>

@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# 虚拟环境
+venv/
+env/
+.env
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# 数据库文件（通过 volume 挂载）
+*.db
+instance/
+
+# 日志
+logs/
+
+# Node
+node_modules/
+package-lock.json
+
+# 文档
+*.md
+!README.md
+*.docx
+docs/
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 测试
+tests/
+test_*.py
+*_test.py
+
+# 环境文件
+.env.local
+.env.*.local
